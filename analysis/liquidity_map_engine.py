@@ -12,7 +12,7 @@ import pandas as pd
 
 from config.settings import LiquiditySettings
 from config.symbols import price_to_pips
-from core.utils import detect_swing_highs, detect_swing_lows
+from core.utils import detect_swing_highs, detect_swing_lows, to_epoch
 from models.liquidity import LiquidityLevel, LiquiditySide, LiquidityType
 
 
@@ -101,7 +101,7 @@ class LiquidityMapEngine:
         sl = detect_swing_lows(lows, self.cfg.swing_lookback)
 
         for idx in sh:
-            ts = float(times[idx]) if hasattr(times[idx], '__float__') else 0.0
+            ts = to_epoch(times[idx])
             levels.append(LiquidityLevel(
                 symbol=symbol,
                 price=float(highs[idx]),
@@ -114,7 +114,7 @@ class LiquidityMapEngine:
             ))
 
         for idx in sl:
-            ts = float(times[idx]) if hasattr(times[idx], '__float__') else 0.0
+            ts = to_epoch(times[idx])
             levels.append(LiquidityLevel(
                 symbol=symbol,
                 price=float(lows[idx]),
@@ -148,7 +148,7 @@ class LiquidityMapEngine:
         sh_prices = [float(highs[i]) for i in sh_indices]
         eq_highs = self._find_equal_prices(sh_prices, sh_indices, tol, symbol)
         for price, strength, idx in eq_highs:
-            ts = float(times[idx]) if hasattr(times[idx], '__float__') else 0.0
+            ts = to_epoch(times[idx])
             levels.append(LiquidityLevel(
                 symbol=symbol,
                 price=price,
@@ -165,7 +165,7 @@ class LiquidityMapEngine:
         sl_prices = [float(lows[i]) for i in sl_indices]
         eq_lows = self._find_equal_prices(sl_prices, sl_indices, tol, symbol)
         for price, strength, idx in eq_lows:
-            ts = float(times[idx]) if hasattr(times[idx], '__float__') else 0.0
+            ts = to_epoch(times[idx])
             levels.append(LiquidityLevel(
                 symbol=symbol,
                 price=price,
@@ -265,8 +265,8 @@ class LiquidityMapEngine:
         rh_idx = int(len(highs) - lookback + np.argmax(segment_h))
         rl_idx = int(len(lows) - lookback + np.argmin(segment_l))
 
-        rh_ts = float(times[rh_idx]) if rh_idx < len(times) and hasattr(times[rh_idx], '__float__') else 0.0
-        rl_ts = float(times[rl_idx]) if rl_idx < len(times) and hasattr(times[rl_idx], '__float__') else 0.0
+        rh_ts = to_epoch(times[rh_idx]) if rh_idx < len(times) else 0.0
+        rl_ts = to_epoch(times[rl_idx]) if rl_idx < len(times) else 0.0
 
         levels.append(LiquidityLevel(
             symbol=symbol,

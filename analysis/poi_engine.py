@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from config.settings import POISettings, TIMEFRAME_WEIGHTS
-from core.utils import compute_atr, candle_body, candle_range, is_bullish, is_bearish, body_ratio
+from core.utils import compute_atr, candle_body, candle_range, is_bullish, is_bearish, body_ratio, to_epoch
 from core.logger import get_logger
 from models.poi import POI, POIDirection, POIType, POIFreshness
 
@@ -84,7 +84,7 @@ class POIEngine:
                             zone_low=lows[j],
                             zone_high=highs[j],
                             origin_bar_index=j,
-                            origin_timestamp=float(times[j]) if hasattr(times[j], '__float__') else 0.0,
+                            origin_timestamp=to_epoch(times[j]),
                         )
                         poi.score = self._base_score(timeframe, current_atr, disp_body)
                         poi.confluences.append(f"OB_supply_{timeframe}")
@@ -103,7 +103,7 @@ class POIEngine:
                             zone_low=lows[j],
                             zone_high=highs[j],
                             origin_bar_index=j,
-                            origin_timestamp=float(times[j]) if hasattr(times[j], '__float__') else 0.0,
+                            origin_timestamp=to_epoch(times[j]),
                         )
                         poi.score = self._base_score(timeframe, current_atr, disp_body)
                         poi.confluences.append(f"OB_demand_{timeframe}")

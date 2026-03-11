@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from config.settings import FVGSettings, TIMEFRAME_WEIGHTS
-from core.utils import compute_atr
+from core.utils import compute_atr, to_epoch
 from models.poi import POI, POIDirection, POIType
 
 
@@ -118,7 +118,7 @@ class FVGEngine:
                         gap_high=c3_low,
                         quality=min(ratio * 10.0, 10.0),
                         bar_index=i + 1,
-                        timestamp=float(times[i + 1]) if hasattr(times[i + 1], '__float__') else 0.0,
+                        timestamp=to_epoch(times[i + 1]),
                     )
                     fvgs.append(fvg)
 
@@ -135,7 +135,7 @@ class FVGEngine:
                         gap_high=c1_low,
                         quality=min(ratio * 10.0, 10.0),
                         bar_index=i + 1,
-                        timestamp=float(times[i + 1]) if hasattr(times[i + 1], '__float__') else 0.0,
+                        timestamp=to_epoch(times[i + 1]),
                     )
                     fvgs.append(fvg)
 

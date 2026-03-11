@@ -28,6 +28,22 @@ def epoch_to_dt(epoch: float) -> datetime:
     return datetime.fromtimestamp(epoch, tz=timezone.utc)
 
 
+def to_epoch(val) -> float:
+    """Convert any timestamp-like value to epoch float.
+
+    Handles datetime, pd.Timestamp, numpy datetime64, and raw numbers.
+    """
+    if val is None:
+        return 0.0
+    if hasattr(val, 'timestamp'):
+        # datetime, pd.Timestamp
+        return val.timestamp()
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Price / candle helpers
 # ---------------------------------------------------------------------------
