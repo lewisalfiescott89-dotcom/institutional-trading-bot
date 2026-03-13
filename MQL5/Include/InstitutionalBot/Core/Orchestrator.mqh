@@ -525,10 +525,11 @@ private:
       // ================================================================
       // STEP 18: Manage open trades
       // ================================================================
+      int prev_closed_count = state.recent_closed_count;
       m_trade_mgr.UpdateTrades(state, bid, ask);
 
-      // Update risk state from closed trades
-      for(int i = 0; i < state.recent_closed_count; i++)
+      // Update risk state from NEWLY closed trades only
+      for(int i = prev_closed_count; i < state.recent_closed_count; i++)
       {
          m_risk_state.daily_pnl += state.recent_closed[i].net_pnl;
          if(state.recent_closed[i].status == STATUS_CLOSED_LOSS)

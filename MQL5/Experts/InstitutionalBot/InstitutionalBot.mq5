@@ -196,6 +196,7 @@ int OnInit()
    risk_cfg.c_risk_pct            = InpCRisk;
    risk_cfg.max_daily_drawdown_pct= InpMaxDailyDD;
    risk_cfg.max_consecutive_losses= InpMaxConsecLosses;
+   risk_cfg.default_sl_pips       = InpDefaultSLPips;
 
    CommissionSettings comm_cfg;
    comm_cfg.Init();
