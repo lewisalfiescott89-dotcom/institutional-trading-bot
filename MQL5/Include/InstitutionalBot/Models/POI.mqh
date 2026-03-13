@@ -60,9 +60,9 @@ struct POIData
       wick_probe_bar_index = 0;
    }
 
-   double MidPrice()      { return (zone_low + zone_high) / 2.0; }
-   double ZoneWidth()     { return zone_high - zone_low; }
-   bool   ContainsPrice(double price) { return price >= zone_low && price <= zone_high; }
+   double MidPrice()      const { return (zone_low + zone_high) / 2.0; }
+   double ZoneWidth()     const { return zone_high - zone_low; }
+   bool   ContainsPrice(double price) const { return price >= zone_low && price <= zone_high; }
 
    void AddConfluence(string conf)
    {

@@ -71,17 +71,17 @@ struct TradeData
       signal_id     = "";
    }
 
-   double RiskDistance()   { return MathAbs(entry_price - sl_price); }
-   double RewardDistance() { return MathAbs(tp_price - entry_price); }
+   double RiskDistance()   const { return MathAbs(entry_price - sl_price); }
+   double RewardDistance() const { return MathAbs(tp_price - entry_price); }
 
-   double RRRatio()
+   double RRRatio() const
    {
       double rd = RiskDistance();
       if(rd == 0) return 0;
       return RewardDistance() / rd;
    }
 
-   bool IsOpen() { return status == STATUS_OPEN; }
+   bool IsOpen() const { return status == STATUS_OPEN; }
 };
 
 #endif

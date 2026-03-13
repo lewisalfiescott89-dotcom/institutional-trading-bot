@@ -57,7 +57,7 @@ struct ScoreBreakdown
       reversal_quality      = 0;
    }
 
-   double Total()
+   double Total() const
    {
       return poi_strength + cluster_strength + liquidity_confluence +
              forecast_alignment + structure_alignment + regime_suitability +

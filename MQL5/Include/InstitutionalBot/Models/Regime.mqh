@@ -30,9 +30,9 @@ struct MarketRegime
       confidence       = 0;
    }
 
-   bool IsTradeable() { return regime != REGIME_LOW_LIQUIDITY; }
+   bool IsTradeable() const { return regime != REGIME_LOW_LIQUIDITY; }
 
-   double RiskMultiplier()
+   double RiskMultiplier() const
    {
       if(regime == REGIME_HIGH_VOLATILITY) return 0.5;
       return 1.0;
