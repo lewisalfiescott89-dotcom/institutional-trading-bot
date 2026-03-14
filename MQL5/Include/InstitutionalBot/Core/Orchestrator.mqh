@@ -424,7 +424,7 @@ private:
 
          // Evaluate timing
          TimingResult timing;
-         m_timing.Evaluate(session, poi.score, 0, timing);
+         m_timing.Evaluate(state.session_state, poi.score, 0, timing);
 
          // Build signal
          SignalData signal;
@@ -435,7 +435,7 @@ private:
                               best_trap, has_trap, rev, signal);
 
          // Check timing allows trade
-         m_timing.Evaluate(session, signal.total_score, 0, timing);
+         m_timing.Evaluate(state.session_state, signal.total_score, 0, timing);
          if(!timing.allow_trade)
          {
             LogMessage(LOG_INFO, "TIMING",

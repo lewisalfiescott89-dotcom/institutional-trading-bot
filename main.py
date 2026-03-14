@@ -110,7 +110,7 @@ def run_backtest(cfg: BotConfig, symbol: str, lookback_days: int, warmup_bars: i
         tf_data = md.fetch_all_timeframes(symbol, ANALYSIS_TIMEFRAMES, lookback_days)
         connector.disconnect()
 
-    if not tf_data.get("M5") is not None or tf_data.get("M5").empty:
+    if tf_data.get("M5") is None or tf_data.get("M5").empty:
         logger.error("No M5 data available for backtesting")
         return
 
@@ -154,7 +154,7 @@ def run_optimize(cfg: BotConfig, symbol: str, lookback_days: int, warmup_bars: i
         tf_data = md.fetch_all_timeframes(symbol, ANALYSIS_TIMEFRAMES, lookback_days)
         connector.disconnect()
 
-    if not tf_data.get("M5") is not None or tf_data.get("M5").empty:
+    if tf_data.get("M5") is None or tf_data.get("M5").empty:
         logger.error("No M5 data available")
         return
 
