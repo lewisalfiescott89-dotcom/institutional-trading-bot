@@ -174,7 +174,7 @@ private:
       if(current_bar_time[0] == m_last_bar_time[sym_idx]) return;  // Same bar
       m_last_bar_time[sym_idx] = current_bar_time[0];
 
-      SymbolState &state = m_states[sym_idx];
+      int si = sym_idx;  // index into m_states[]
 
       // ================================================================
       // STEP 1: Sync MT5 data
@@ -245,20 +245,20 @@ private:
       total_pois = m_cluster.Cluster(all_pois, total_pois);
 
       // Update state POI list
-      state.active_poi_count = MathMin(total_pois, MAX_POIS);
-      for(int i = 0; i < state.active_poi_count; i++)
-         state.active_pois[i] = all_pois[i];
+      m_states[si].active_poi_count = MathMin(total_pois, MAX_POIS);
+      for(int i = 0; i < m_states[si].active_poi_count; i++)
+         m_states[si].active_pois[i] = all_pois[i];
 
       // ================================================================
       // STEP 6: Update liquidity map
       // ================================================================
-      state.active_liq_count = m_liquidity_map.BuildMap(
+      m_states[si].active_liq_count = m_liquidity_map.BuildMap(
          m5_opens, m5_highs, m5_lows, m5_closes, m5_times, m5_count,
-         symbol, PERIOD_M5, state.active_liquidity, MAX_LIQUIDITY);
+         symbol, PERIOD_M5, m_states[si].active_liquidity, MAX_LIQUIDITY);
 
       // Update swept status
-      m_liquidity_map.UpdateSweptStatus(state.active_liquidity,
-         state.active_liq_count,
+      m_liquidity_map.UpdateSweptStatus(m_states[si].active_liquidity,
+         m_states[si].active_liq_count,
          m5_highs[m5_count-1], m5_lows[m5_count-1]);
 
       // ================================================================
@@ -279,21 +279,21 @@ private:
       // ================================================================
       m_regime.Classify(m5_highs, m5_lows, m5_closes, m5_volumes,
                         m5_count, symbol, structure, regime);
-      state.regime = regime;
+      m_states[si].regime = regime;
 
       // Now build forecast (needs regime)
-      m_liquidity_forecast.Forecast(state.active_liquidity, state.active_liq_count,
+      m_liquidity_forecast.Forecast(m_states[si].active_liquidity, m_states[si].active_liq_count,
                                     bid, regime, forecast);
-      state.forecast_price     = forecast.primary_target.price;
-      state.forecast_direction = forecast.draw_is_above ? "ABOVE" : "BELOW";
+      m_states[si].forecast_price     = forecast.primary_target.price;
+      m_states[si].forecast_direction = forecast.draw_is_above ? "ABOVE" : "BELOW";
 
       // ================================================================
       // STEP 10: Update session and timing
       // ================================================================
-      m_session.Update(TimeCurrent(), state.session_state);
-      m_session.TrackSessionLevels(m5_highs, m5_lows, m5_times, m5_count, state.session_state);
-      state.session_name = state.session_state.session_name;
-      state.in_kill_zone = state.session_state.in_kill_zone;
+      m_session.Update(TimeCurrent(), m_states[si].session_state);
+      m_session.TrackSessionLevels(m5_highs, m5_lows, m5_times, m5_count, m_states[si].session_state);
+      m_states[si].session_name = m_states[si].session_state.session_name;
+      m_states[si].in_kill_zone = m_states[si].session_state.in_kill_zone;
 
       // ================================================================
       // STEP 11: Detect FVGs and boost POIs
@@ -302,15 +302,14 @@ private:
       ArrayResize(fvgs, MAX_FVGS);
       int fvg_count = m_fvg.Detect(m5_highs, m5_lows, m5_closes, m5_times,
                                     m5_count, symbol, PERIOD_M5, fvgs, MAX_FVGS);
-      m_fvg.BoostPOIWithFVGs(state.active_pois, state.active_poi_count, fvgs, fvg_count);
+      m_fvg.BoostPOIWithFVGs(m_states[si].active_pois, m_states[si].active_poi_count, fvgs, fvg_count);
 
       // ================================================================
       // STEP 12-15: Check each active POI for trade signals
       // ================================================================
-      for(int p = 0; p < state.active_poi_count; p++)
+      for(int p = 0; p < m_states[si].active_poi_count; p++)
       {
-         POIData &poi = state.active_pois[p];
-         if(!poi.active || poi.invalidated) continue;
+         if(!m_states[si].active_pois[p].active || m_states[si].active_pois[p].invalidated) continue;
 
          double last_close = m5_closes[m5_count - 1];
          double last_open  = m5_opens[m5_count - 1];
@@ -318,55 +317,55 @@ private:
          double last_low   = m5_lows[m5_count - 1];
 
          // STEP 11a: Check zone invalidation (Pepperstone 5M rule)
-         if(poi.wick_probe_pending)
+         if(m_states[si].active_pois[p].wick_probe_pending)
          {
             // Previous bar had a wick probe - check if THIS bar opens past the zone
-            if(poi.direction == POI_BEARISH && last_open > poi.zone_high)
+            if(m_states[si].active_pois[p].direction == POI_BEARISH && last_open > m_states[si].active_pois[p].zone_high)
             {
-               poi.Invalidate();
+               m_states[si].active_pois[p].Invalidate();
                LogMessage(LOG_INFO, "INVALIDATION",
-                  StringFormat("%s POI #%d blown - candle opened above zone", symbol, poi.id));
+                  StringFormat("%s POI #%d blown - candle opened above zone", symbol, m_states[si].active_pois[p].id));
                continue;
             }
-            else if(poi.direction == POI_BULLISH && last_open < poi.zone_low)
+            else if(m_states[si].active_pois[p].direction == POI_BULLISH && last_open < m_states[si].active_pois[p].zone_low)
             {
-               poi.Invalidate();
+               m_states[si].active_pois[p].Invalidate();
                LogMessage(LOG_INFO, "INVALIDATION",
-                  StringFormat("%s POI #%d blown - candle opened below zone", symbol, poi.id));
+                  StringFormat("%s POI #%d blown - candle opened below zone", symbol, m_states[si].active_pois[p].id));
                continue;
             }
-            poi.wick_probe_pending = false;
+            m_states[si].active_pois[p].wick_probe_pending = false;
          }
 
          // Check if price is in the zone
-         bool price_in_zone = poi.ContainsPrice(last_close) ||
-                              poi.ContainsPrice(last_low) ||
-                              poi.ContainsPrice(last_high);
+         bool price_in_zone = m_states[si].active_pois[p].ContainsPrice(last_close) ||
+                              m_states[si].active_pois[p].ContainsPrice(last_low) ||
+                              m_states[si].active_pois[p].ContainsPrice(last_high);
 
          if(!price_in_zone) continue;
 
          // Track wick probe for next bar evaluation
-         if(poi.direction == POI_BEARISH && last_high > poi.zone_high && last_close <= poi.zone_high)
+         if(m_states[si].active_pois[p].direction == POI_BEARISH && last_high > m_states[si].active_pois[p].zone_high && last_close <= m_states[si].active_pois[p].zone_high)
          {
-            poi.wick_probe_pending   = true;
-            poi.wick_probe_bar_index = m5_count - 1;
+            m_states[si].active_pois[p].wick_probe_pending   = true;
+            m_states[si].active_pois[p].wick_probe_bar_index = m5_count - 1;
          }
-         else if(poi.direction == POI_BULLISH && last_low < poi.zone_low && last_close >= poi.zone_low)
+         else if(m_states[si].active_pois[p].direction == POI_BULLISH && last_low < m_states[si].active_pois[p].zone_low && last_close >= m_states[si].active_pois[p].zone_low)
          {
-            poi.wick_probe_pending   = true;
-            poi.wick_probe_bar_index = m5_count - 1;
+            m_states[si].active_pois[p].wick_probe_pending   = true;
+            m_states[si].active_pois[p].wick_probe_bar_index = m5_count - 1;
          }
 
          // Record touch
-         poi.RecordTouch();
-         m_poi.UpdateFreshness(poi);
+         m_states[si].active_pois[p].RecordTouch();
+         m_poi.UpdateFreshness(m_states[si].active_pois[p]);
 
          // STEP 12: Detect sweep
          SweepData sweeps[];
          ArrayResize(sweeps, MAX_SWEEPS);
          int sweep_count = m_sweep.Detect(m5_opens, m5_highs, m5_lows, m5_closes,
                                           m5_times, m5_count,
-                                          state.active_liquidity, state.active_liq_count,
+                                          m_states[si].active_liquidity, m_states[si].active_liq_count,
                                           symbol, sweeps, MAX_SWEEPS);
 
          bool has_sweep = false;
@@ -374,7 +373,7 @@ private:
          best_sweep.Init();
          for(int sw = 0; sw < sweep_count; sw++)
          {
-            if(sweeps[sw].valid && m_sweep.SweepNearPOI(sweeps[sw], poi, regime.atr_value * 2))
+            if(sweeps[sw].valid && m_sweep.SweepNearPOI(sweeps[sw], m_states[si].active_pois[p], regime.atr_value * 2))
             {
                if(sweeps[sw].score > best_sweep.score)
                {
@@ -389,7 +388,7 @@ private:
          ArrayResize(traps, MAX_TRAPS);
          int trap_count = m_trap.Detect(m5_opens, m5_highs, m5_lows, m5_closes,
                                         m5_times, m5_count,
-                                        state.active_liquidity, state.active_liq_count,
+                                        m_states[si].active_liquidity, m_states[si].active_liq_count,
                                         symbol, traps, MAX_TRAPS);
 
          bool has_trap = false;
@@ -405,7 +404,7 @@ private:
          }
 
          // STEP 13: Detect reversal candle
-         bool look_for_bullish = (poi.direction == POI_BULLISH);
+         bool look_for_bullish = (m_states[si].active_pois[p].direction == POI_BULLISH);
          ReversalData rev;
          m_reversal.DetectAt(m5_opens, m5_highs, m5_lows, m5_closes, m5_times,
                              m5_count, m5_count - 1, look_for_bullish, rev);
@@ -419,27 +418,27 @@ private:
          LiquidityLevel nearest_liq;
          nearest_liq.Init();
          bool has_nearest_liq = FindNearestOpposingLiquidity(
-            state.active_liquidity, state.active_liq_count,
-            bid, poi.direction, nearest_liq);
+            m_states[si].active_liquidity, m_states[si].active_liq_count,
+            bid, m_states[si].active_pois[p].direction, nearest_liq);
 
          // Evaluate timing
          TimingResult timing;
-         m_timing.Evaluate(state.session_state, poi.score, 0, timing);
+         m_timing.Evaluate(m_states[si].session_state, m_states[si].active_pois[p].score, 0, timing);
 
          // Build signal
          SignalData signal;
-         m_quality.ScoreSetup(poi, false, 0,
+         m_quality.ScoreSetup(m_states[si].active_pois[p], false, 0,
                               nearest_liq, has_nearest_liq,
                               forecast, structure, regime, timing,
                               best_sweep, has_sweep,
                               best_trap, has_trap, rev, signal);
 
          // Check timing allows trade
-         m_timing.Evaluate(state.session_state, signal.total_score, 0, timing);
+         m_timing.Evaluate(m_states[si].session_state, signal.total_score, 0, timing);
          if(!timing.allow_trade)
          {
             LogMessage(LOG_INFO, "TIMING",
-               StringFormat("%s POI#%d blocked: %s", symbol, poi.id, timing.reason));
+               StringFormat("%s POI#%d blocked: %s", symbol, m_states[si].active_pois[p].id, timing.reason));
             continue;
          }
 
@@ -448,7 +447,7 @@ private:
          {
             LogMessage(LOG_INFO, "QUALITY",
                StringFormat("%s POI#%d grade D - skipped (score=%.1f)",
-                  symbol, poi.id, signal.total_score));
+                  symbol, m_states[si].active_pois[p].id, signal.total_score));
             continue;
          }
 
@@ -504,10 +503,10 @@ private:
          if(executed)
          {
             // Add to open trades
-            if(state.open_trade_count < MAX_TRADES)
+            if(m_states[si].open_trade_count < MAX_TRADES)
             {
-               state.open_trades[state.open_trade_count] = trade;
-               state.open_trade_count++;
+               m_states[si].open_trades[m_states[si].open_trade_count] = trade;
+               m_states[si].open_trade_count++;
             }
 
             m_risk_state.total_trades_today++;
@@ -521,16 +520,16 @@ private:
       // ================================================================
       // STEP 18: Manage open trades
       // ================================================================
-      int prev_closed_count = state.recent_closed_count;
-      m_trade_mgr.UpdateTrades(state, bid, ask);
+      int prev_closed_count = m_states[si].recent_closed_count;
+      m_trade_mgr.UpdateTrades(m_states[si], bid, ask);
 
       // Update risk state from NEWLY closed trades only
-      for(int i = prev_closed_count; i < state.recent_closed_count; i++)
+      for(int i = prev_closed_count; i < m_states[si].recent_closed_count; i++)
       {
-         m_risk_state.daily_pnl += state.recent_closed[i].net_pnl;
-         if(state.recent_closed[i].status == STATUS_CLOSED_LOSS)
+         m_risk_state.daily_pnl += m_states[si].recent_closed[i].net_pnl;
+         if(m_states[si].recent_closed[i].status == STATUS_CLOSED_LOSS)
             m_risk_state.consecutive_losses++;
-         else if(state.recent_closed[i].status == STATUS_CLOSED_WIN)
+         else if(m_states[si].recent_closed[i].status == STATUS_CLOSED_WIN)
             m_risk_state.consecutive_losses = 0;
       }
 
@@ -544,9 +543,9 @@ private:
       // ================================================================
       LogMessage(LOG_DEBUG, "CYCLE",
          StringFormat("%s | POIs=%d LIQ=%d Trades=%d | Session=%s KZ=%s | Regime=%s Bias=%s",
-            symbol, state.active_poi_count, state.active_liq_count,
-            state.open_trade_count, state.session_name,
-            state.in_kill_zone ? "YES" : "NO",
+            symbol, m_states[si].active_poi_count, m_states[si].active_liq_count,
+            m_states[si].open_trade_count, m_states[si].session_name,
+            m_states[si].in_kill_zone ? "YES" : "NO",
             RegimeToString(regime.regime),
             BiasToString(regime.trend_bias)));
    }
