@@ -34,8 +34,9 @@ public:
 
    //--- Calculate risk percentage for a given signal and regime
    void CalculateRisk(const SignalData &signal, const MarketRegime &regime,
-                      double daily_pnl, double daily_drawdown,
-                      int consecutive_losses, RiskResult &result)
+                      double daily_pnl, double daily_drawdown_pct,
+                      int consecutive_losses, double account_equity,
+                      RiskResult &result)
    {
       result.Init();
 
@@ -52,11 +53,12 @@ public:
       double regime_mult = regime.RiskMultiplier();
       double adjusted_risk = base_risk * regime_mult;
 
-      // Daily drawdown protection
-      if(MathAbs(daily_pnl) > m_cfg.max_daily_drawdown_pct)
+      // Daily drawdown protection - convert daily_pnl (USD) to percentage of equity
+      double daily_pnl_pct = (account_equity > 0) ? MathAbs(daily_pnl) / account_equity * 100.0 : 0;
+      if(daily_pnl_pct > m_cfg.max_daily_drawdown_pct)
       {
          result.allow_trade = false;
-         result.reason = StringFormat("Daily drawdown exceeded: %.2f%%", MathAbs(daily_pnl));
+         result.reason = StringFormat("Daily drawdown exceeded: %.2f%%", daily_pnl_pct);
          return;
       }
 
@@ -72,8 +74,8 @@ public:
          adjusted_risk *= (1.0 - 0.2 * (consecutive_losses - 1));
       }
 
-      // Daily drawdown reduction as we approach limit
-      double dd_ratio = MathAbs(daily_drawdown) / m_cfg.max_daily_drawdown_pct;
+      // Daily drawdown reduction as we approach limit (daily_drawdown_pct is already %)
+      double dd_ratio = (m_cfg.max_daily_drawdown_pct > 0) ? daily_drawdown_pct / m_cfg.max_daily_drawdown_pct : 0;
       if(dd_ratio > 0.5)
          adjusted_risk *= (1.0 - (dd_ratio - 0.5));
 

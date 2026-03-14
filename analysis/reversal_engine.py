@@ -125,9 +125,10 @@ class ReversalEngine:
                     )
 
             # 2. Bearish pin bar (shooting star)
-            if rng > 0:
+            if rng > 0 and (is_bearish(o, c) or body < rng * 0.3):
                 upper_wick = candle_upper_wick(o, c, h)
-                if body > 0 and upper_wick / body >= self.cfg.min_pin_wick_ratio:
+                lower_wick = candle_lower_wick(o, c, l)
+                if body > 0 and upper_wick / body >= self.cfg.min_pin_wick_ratio and upper_wick > lower_wick * 2:
                     quality = min(upper_wick / body * 3.0, 10.0)
                     return ReversalEvent(
                         reversal_type=ReversalType.BEARISH_PIN_BAR,
@@ -177,9 +178,10 @@ class ReversalEngine:
                     )
 
             # 2. Bullish pin bar (hammer)
-            if rng > 0:
+            if rng > 0 and (is_bullish(o, c) or body < rng * 0.3):
                 lower_wick = candle_lower_wick(o, c, l)
-                if body > 0 and lower_wick / body >= self.cfg.min_pin_wick_ratio:
+                upper_wick = candle_upper_wick(o, c, h)
+                if body > 0 and lower_wick / body >= self.cfg.min_pin_wick_ratio and lower_wick > upper_wick * 2:
                     quality = min(lower_wick / body * 3.0, 10.0)
                     return ReversalEvent(
                         reversal_type=ReversalType.BULLISH_PIN_BAR,

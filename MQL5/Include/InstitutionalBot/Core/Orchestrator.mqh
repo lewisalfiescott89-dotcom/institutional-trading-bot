@@ -467,11 +467,12 @@ private:
          // STEP 16: Calculate risk and position size
          // ================================================================
          RiskResult risk_result;
+         double equity = AccountInfoDouble(ACCOUNT_EQUITY);
          m_risk.CalculateRisk(signal, regime,
                               m_risk_state.daily_pnl,
                               m_risk_state.daily_drawdown,
                               m_risk_state.consecutive_losses,
-                              risk_result);
+                              equity, risk_result);
 
          if(!risk_result.allow_trade)
          {
@@ -532,6 +533,14 @@ private:
          else if(m_states[si].recent_closed[i].status == STATUS_CLOSED_WIN)
             m_risk_state.consecutive_losses = 0;
       }
+
+      // Update daily drawdown (peak equity vs current equity)
+      double cur_equity = AccountInfoDouble(ACCOUNT_EQUITY);
+      if(cur_equity > m_risk_state.peak_equity)
+         m_risk_state.peak_equity = cur_equity;
+      m_risk_state.daily_drawdown = (m_risk_state.peak_equity > 0)
+         ? (m_risk_state.peak_equity - cur_equity) / m_risk_state.peak_equity * 100.0
+         : 0;
 
       // ================================================================
       // STEP 19: Save state (via global variables for persistence)
