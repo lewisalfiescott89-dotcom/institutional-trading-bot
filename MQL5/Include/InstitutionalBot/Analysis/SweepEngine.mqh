@@ -70,7 +70,7 @@ public:
 
       for(int i = start; i < bar_count && count < max_sweeps; i++)
       {
-         for(int lv = 0; lv < level_count; lv++)
+         for(int lv = 0; lv < level_count && count < max_sweeps; lv++)
          {
             if(!levels[lv].active || levels[lv].swept) continue;
 
