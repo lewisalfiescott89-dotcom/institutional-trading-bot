@@ -24,6 +24,7 @@
 input group "=== General Settings ==="
 input bool     InpDryRun           = true;     // Dry Run Mode (no real trades)
 input ENUM_LOG_LEVEL InpLogLevel   = LOG_INFO;  // Log Level
+input bool     InpRequireSweepTrap = false;     // Require sweep/trap (false=reversal only OK)
 
 input group "=== Symbols ==="
 input string   InpSymbol1          = "XAUUSD";  // Symbol 1
@@ -216,6 +217,8 @@ int OnInit()
    orchestrator.Configure(poi_cfg, fvg_cfg, liq_cfg, sweep_cfg, trap_cfg,
                           rev_cfg, sess_cfg, tim_cfg, grade_cfg, risk_cfg,
                           comm_cfg, safe_cfg);
+
+   orchestrator.SetRequireSweepTrap(InpRequireSweepTrap);
 
    if(!orchestrator.Init(symbols, count, InpDryRun))
    {

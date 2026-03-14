@@ -78,8 +78,22 @@ private:
    //--- Bars to load per timeframe
    int m_bars_to_load;
 
+   //--- Entry filter toggle
+   bool m_require_sweep_trap;
+
+   //--- Diagnostic counters (reset each bar for logging)
+   int m_diag_price_in_zone;
+   int m_diag_has_reversal;
+   int m_diag_has_sweep_trap;
+   int m_diag_meets_minimum;
+   int m_diag_timing_blocked;
+   int m_diag_grade_d;
+   int m_diag_safety_blocked;
+   int m_diag_risk_blocked;
+
 public:
-   COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1)
+   COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1),
+                     m_require_sweep_trap(false)
    {
       m_timeframes[0] = PERIOD_MN1;
       m_timeframes[1] = PERIOD_W1;
@@ -106,13 +120,18 @@ public:
       m_risk_state.peak_equity = AccountInfoDouble(ACCOUNT_EQUITY);
 
       m_executor.SetDryRun(dry_run);
+      ResetDiagnostics();
 
       LogMessage(LOG_INFO, "ORCHESTRATOR",
-         StringFormat("Initialised with %d symbols, dry_run=%s",
-            m_symbol_count, dry_run ? "true" : "false"));
+         StringFormat("Initialised with %d symbols, dry_run=%s, require_sweep_trap=%s",
+            m_symbol_count, dry_run ? "true" : "false",
+            m_require_sweep_trap ? "true" : "false"));
 
       return true;
    }
+
+   //--- Toggle sweep/trap requirement
+   void SetRequireSweepTrap(bool require) { m_require_sweep_trap = require; }
 
    //--- Configure all engines
    void Configure(const POISettings &poi_cfg, const FVGSettings &fvg_cfg,
@@ -410,9 +429,40 @@ private:
          m_reversal.DetectAt(m5_opens, m5_highs, m5_lows, m5_closes, m5_times,
                              m5_count, m5_count - 1, look_for_bullish, rev);
 
-         // Must have sweep/trap AND reversal
-         if(!m_quality.MeetsMinimumRequirements(rev, has_sweep || has_trap))
+         // Check reversal
+         bool has_reversal = rev.valid;
+         bool has_sweep_or_trap = has_sweep || has_trap;
+
+         // Diagnostic tracking
+         m_diag_price_in_zone++;
+         if(has_reversal) m_diag_has_reversal++;
+         if(has_sweep_or_trap) m_diag_has_sweep_trap++;
+
+         // Minimum requirements gate
+         if(!has_reversal)
+         {
+            // No reversal = no trade regardless
             continue;
+         }
+
+         if(m_require_sweep_trap && !has_sweep_or_trap)
+         {
+            // Strict mode: need sweep/trap too
+            LogMessage(LOG_INFO, "FILTER",
+               StringFormat("%s POI#%d reversal found but no sweep/trap (strict mode)",
+                  symbol, m_states[si].active_pois[p].id));
+            continue;
+         }
+
+         m_diag_meets_minimum++;
+
+         // If no sweep/trap, reduce the signal score slightly
+         if(!has_sweep_or_trap)
+         {
+            LogMessage(LOG_INFO, "ENTRY",
+               StringFormat("%s POI#%d reversal-only entry (no sweep/trap)",
+                  symbol, m_states[si].active_pois[p].id));
+         }
 
          // STEP 14: Score setup quality
          // Find nearest opposing liquidity for TP
@@ -438,14 +488,16 @@ private:
          m_timing.Evaluate(m_states[si].session_state, signal.total_score, 0, timing);
          if(!timing.allow_trade)
          {
+            m_diag_timing_blocked++;
             LogMessage(LOG_INFO, "TIMING",
-               StringFormat("%s POI#%d blocked: %s", symbol, m_states[si].active_pois[p].id, timing.reason));
+               StringFormat("%s POI#%d blocked: %s (score=%.1f)", symbol, m_states[si].active_pois[p].id, timing.reason, signal.total_score));
             continue;
          }
 
          // Grade D = no trade
          if(signal.grade == GRADE_D)
          {
+            m_diag_grade_d++;
             LogMessage(LOG_INFO, "QUALITY",
                StringFormat("%s POI#%d grade D - skipped (score=%.1f)",
                   symbol, m_states[si].active_pois[p].id, signal.total_score));
@@ -459,6 +511,7 @@ private:
          m_safety.Check(symbol, m_risk_state, safety);
          if(!safety.passed)
          {
+            m_diag_safety_blocked++;
             LogMessage(LOG_WARNING, "SAFETY",
                StringFormat("%s VETOED: %s", symbol, safety.veto_reason));
             continue;
@@ -477,6 +530,7 @@ private:
 
          if(!risk_result.allow_trade)
          {
+            m_diag_risk_blocked++;
             LogMessage(LOG_INFO, "RISK",
                StringFormat("%s blocked: %s", symbol, risk_result.reason));
             continue;
@@ -549,15 +603,27 @@ private:
       SaveStateToGlobals(sym_idx);
 
       // ================================================================
-      // STEP 20: Log/debug output
+      // STEP 20: Log/debug output with diagnostics
       // ================================================================
-      LogMessage(LOG_DEBUG, "CYCLE",
+      // Always log diagnostics at INFO level if anything hit a POI zone
+      if(m_diag_price_in_zone > 0)
+      {
+         LogMessage(LOG_INFO, "DIAG",
+            StringFormat("%s | InZone=%d Rev=%d Sw/Tr=%d Pass=%d TimBlk=%d GrD=%d SafBlk=%d RskBlk=%d",
+               symbol, m_diag_price_in_zone, m_diag_has_reversal, m_diag_has_sweep_trap,
+               m_diag_meets_minimum, m_diag_timing_blocked, m_diag_grade_d,
+               m_diag_safety_blocked, m_diag_risk_blocked));
+      }
+
+      LogMessage(LOG_INFO, "CYCLE",
          StringFormat("%s | POIs=%d LIQ=%d Trades=%d | Session=%s KZ=%s | Regime=%s Bias=%s",
             symbol, m_states[si].active_poi_count, m_states[si].active_liq_count,
             m_states[si].open_trade_count, m_states[si].session_name,
             m_states[si].in_kill_zone ? "YES" : "NO",
             RegimeToString(regime.regime),
             BiasToString(regime.trend_bias)));
+
+      ResetDiagnostics();
    }
 
    //--- Find nearest opposing liquidity for TP targeting
@@ -624,6 +690,19 @@ private:
          case REGIME_LOW_LIQUIDITY:   return "LOW_LIQ";
          default:                     return "UNKNOWN";
       }
+   }
+
+   //--- Reset diagnostic counters
+   void ResetDiagnostics()
+   {
+      m_diag_price_in_zone  = 0;
+      m_diag_has_reversal   = 0;
+      m_diag_has_sweep_trap = 0;
+      m_diag_meets_minimum  = 0;
+      m_diag_timing_blocked = 0;
+      m_diag_grade_d        = 0;
+      m_diag_safety_blocked = 0;
+      m_diag_risk_blocked   = 0;
    }
 
    //--- Helper: bias to string
