@@ -149,9 +149,7 @@ public:
          m_last_day = dt.day;
          for(int i = 0; i < m_symbol_count; i++)
          {
-            SessionState sess;
-            sess.Init();
-            m_session.ResetDailyLevels(sess);
+            m_session.ResetDailyLevels(m_states[i].session_state);
          }
          LogMessage(LOG_INFO, "ORCHESTRATOR", "New day - risk state reset");
       }
@@ -292,12 +290,10 @@ private:
       // ================================================================
       // STEP 10: Update session and timing
       // ================================================================
-      SessionState session;
-      session.Init();
-      m_session.Update(TimeCurrent(), session);
-      m_session.TrackSessionLevels(m5_highs, m5_lows, m5_times, m5_count, session);
-      state.session_name = session.session_name;
-      state.in_kill_zone = session.in_kill_zone;
+      m_session.Update(TimeCurrent(), state.session_state);
+      m_session.TrackSessionLevels(m5_highs, m5_lows, m5_times, m5_count, state.session_state);
+      state.session_name = state.session_state.session_name;
+      state.in_kill_zone = state.session_state.in_kill_zone;
 
       // ================================================================
       // STEP 11: Detect FVGs and boost POIs

@@ -262,8 +262,9 @@ class LiquidityMapEngine:
         range_high = float(np.max(segment_h))
         range_low = float(np.min(segment_l))
 
-        rh_idx = int(len(highs) - lookback + np.argmax(segment_h))
-        rl_idx = int(len(lows) - lookback + np.argmin(segment_l))
+        offset = max(0, len(highs) - lookback)
+        rh_idx = int(offset + np.argmax(segment_h))
+        rl_idx = int(offset + np.argmin(segment_l))
 
         rh_ts = to_epoch(times[rh_idx]) if rh_idx < len(times) else 0.0
         rl_ts = to_epoch(times[rl_idx]) if rl_idx < len(times) else 0.0

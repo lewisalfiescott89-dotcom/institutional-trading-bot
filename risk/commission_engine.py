@@ -44,13 +44,13 @@ class CommissionEngine:
             return self.cfg.forex_per_lot * lot_size
 
         elif asset_class == "commodity":
-            # % of position value
+            # % of position value (round-trip = 2x)
             position_value = entry_price * spec.contract_size * lot_size
-            return position_value * (self.cfg.commodity_pct / 100.0)
+            return position_value * (self.cfg.commodity_pct / 100.0) * 2.0
 
         elif asset_class == "crypto":
             position_value = entry_price * spec.contract_size * lot_size
-            return position_value * (self.cfg.crypto_pct / 100.0)
+            return position_value * (self.cfg.crypto_pct / 100.0) * 2.0
 
         elif asset_class == "index":
             return self.cfg.index_per_lot * lot_size

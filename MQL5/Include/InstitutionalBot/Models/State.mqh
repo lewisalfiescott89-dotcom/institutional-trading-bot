@@ -8,6 +8,7 @@
 #include "Liquidity.mqh"
 #include "Trade.mqh"
 #include "Regime.mqh"
+#include "../Analysis/SessionEngine.mqh"
 
 #define MAX_POIS       200
 #define MAX_LIQUIDITY  200
@@ -52,6 +53,9 @@ struct SymbolState
    int            reentry_poi_ids[MAX_POIS];
    int            reentry_count;
 
+   // Persistent session state per symbol
+   SessionState   session_state;
+
    void Init()
    {
       symbol                    = "";
@@ -67,6 +71,7 @@ struct SymbolState
       recent_closed_count       = 0;
       regime.Init();
       reentry_count             = 0;
+      session_state.Init();
    }
 };
 

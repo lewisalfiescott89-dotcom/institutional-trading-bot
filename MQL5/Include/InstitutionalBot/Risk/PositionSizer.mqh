@@ -87,17 +87,17 @@ public:
       // Lot size = risk_amount / (sl_pips * pip_value_per_lot)
       double raw_lots = result.risk_amount / (sl_pips * result.pip_value);
 
-      // Apply MT5 constraints
-      if(min_volume > 0) m_min_lot = min_volume;
-      if(max_volume > 0) m_max_lot = max_volume;
-      if(vol_step > 0)   m_lot_step = vol_step;
+      // Apply MT5 constraints (use local vars to avoid mutating member state)
+      double eff_min_lot = (min_volume > 0) ? min_volume : m_min_lot;
+      double eff_max_lot = (max_volume > 0) ? max_volume : m_max_lot;
+      double eff_lot_step = (vol_step > 0) ? vol_step : m_lot_step;
 
       // Round to lot step
-      if(m_lot_step > 0)
-         raw_lots = MathFloor(raw_lots / m_lot_step) * m_lot_step;
+      if(eff_lot_step > 0)
+         raw_lots = MathFloor(raw_lots / eff_lot_step) * eff_lot_step;
 
       // Clamp
-      result.lot_size = MathMax(m_min_lot, MathMin(raw_lots, m_max_lot));
+      result.lot_size = MathMax(eff_min_lot, MathMin(raw_lots, eff_max_lot));
       result.lot_size = NormalizeDouble(result.lot_size, 2);
 
       result.description = StringFormat("Equity=%.2f Risk=%.2f%% SL=%.1f pips Lots=%.2f",
