@@ -425,11 +425,24 @@ private:
             }
          }
 
-         // STEP 13: Detect reversal candle
+         // STEP 13: Detect reversal candle on recent COMPLETED bars
+         //   m5_count-1 = current forming bar (skip - incomplete candle)
+         //   m5_count-2 = last completed bar
+         //   Check last 3 completed bars for best reversal
          bool look_for_bullish = (m_states[si].active_pois[p].direction == POI_BULLISH);
          ReversalData rev;
-         m_reversal.DetectAt(m5_opens, m5_highs, m5_lows, m5_closes, m5_times,
-                             m5_count, m5_count - 1, look_for_bullish, rev);
+         rev.Init();
+         for(int rb = 2; rb <= 4 && rb < m5_count; rb++)
+         {
+            ReversalData candidate;
+            m_reversal.DetectAt(m5_opens, m5_highs, m5_lows, m5_closes, m5_times,
+                                m5_count, m5_count - rb, look_for_bullish, candidate);
+            if(candidate.valid && candidate.quality > rev.quality)
+               rev = candidate;
+            // Also accept detected-but-below-threshold if nothing valid yet
+            if(!rev.valid && candidate.type != REV_NONE && candidate.quality > rev.quality)
+               rev = candidate;
+         }
 
          // Check reversal
          bool has_reversal = rev.valid;

@@ -57,7 +57,7 @@ input group "=== Reversal Settings ==="
 input double   InpEngulfingRatio   = 1.0;       // Engulfing body ratio
 input double   InpPinBarWickRatio  = 0.6;       // Pin bar wick ratio
 input double   InpDispBodyRatio    = 0.7;       // Displacement body ratio
-input double   InpMinRevQuality    = 3.0;       // Min reversal quality
+input double   InpMinRevQuality    = 2.0;       // Min reversal quality
 
 input group "=== Session Settings (UTC hours) ==="
 input int      InpAsianStart       = 0;         // Asian session start
@@ -72,7 +72,7 @@ input double   InpAPlusThreshold   = 7.0;       // A+ grade threshold
 input double   InpAThreshold       = 5.5;       // A grade threshold
 input double   InpBThreshold       = 4.0;       // B grade threshold
 input double   InpCThreshold       = 2.5;       // C grade threshold
-input bool     InpAllowGradeD      = false;     // Allow Grade D trades (lowest quality)
+input bool     InpAllowGradeD      = true;      // Allow Grade D trades (lowest quality)
 
 input group "=== Risk Settings ==="
 input double   InpAPlusRisk        = 2.0;       // A+ risk %
