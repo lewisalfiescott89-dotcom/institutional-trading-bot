@@ -44,9 +44,9 @@ public:
       double base_risk = GradeToRisk(signal.grade);
       if(base_risk <= 0)
       {
-         result.allow_trade = false;
-         result.reason = "Grade D - no trade";
-         return;
+         // Grade D gets minimum risk if it passed other filters
+         base_risk = m_cfg.c_risk_pct * 0.5;  // Half of C-grade risk
+         if(base_risk <= 0) base_risk = 0.1;
       }
 
       // Regime modifier

@@ -22,7 +22,7 @@
 //| Input parameters                                                  |
 //+------------------------------------------------------------------+
 input group "=== General Settings ==="
-input bool     InpDryRun           = true;     // Dry Run Mode (no real trades)
+input bool     InpDryRun           = false;    // Dry Run Mode (no real trades)
 input ENUM_LOG_LEVEL InpLogLevel   = LOG_INFO;  // Log Level
 input bool     InpRequireSweepTrap = false;     // Require sweep/trap (false=reversal only OK)
 
@@ -68,10 +68,11 @@ input int      InpNYStart          = 12;        // New York session start
 input int      InpNYEnd            = 21;        // New York session end
 
 input group "=== Grading Thresholds ==="
-input double   InpAPlusThreshold   = 8.0;       // A+ grade threshold
-input double   InpAThreshold       = 6.5;       // A grade threshold
-input double   InpBThreshold       = 5.0;       // B grade threshold
-input double   InpCThreshold       = 3.5;       // C grade threshold
+input double   InpAPlusThreshold   = 7.0;       // A+ grade threshold
+input double   InpAThreshold       = 5.5;       // A grade threshold
+input double   InpBThreshold       = 4.0;       // B grade threshold
+input double   InpCThreshold       = 2.5;       // C grade threshold
+input bool     InpAllowGradeD      = false;     // Allow Grade D trades (lowest quality)
 
 input group "=== Risk Settings ==="
 input double   InpAPlusRisk        = 2.0;       // A+ risk %
@@ -219,6 +220,7 @@ int OnInit()
                           comm_cfg, safe_cfg);
 
    orchestrator.SetRequireSweepTrap(InpRequireSweepTrap);
+   orchestrator.SetAllowGradeD(InpAllowGradeD);
 
    if(!orchestrator.Init(symbols, count, InpDryRun))
    {

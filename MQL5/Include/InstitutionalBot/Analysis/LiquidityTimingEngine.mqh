@@ -92,21 +92,36 @@ public:
             result.reason = "Mid-grade setup outside active session";
          }
       }
-      // C setups only in kill zones (score 3-5)
+      // C setups in kill zones or active sessions (score 3-5)
       else if(setup_grade_score >= 3.0)
       {
-         if(session.in_kill_zone)
+         if(session.in_kill_zone || session.current_session == SESSION_LONDON ||
+            session.current_session == SESSION_NEW_YORK || session.current_session == SESSION_OVERLAP)
          {
             result.allow_trade = true;
-            result.reason = "Low-grade setup in kill zone";
+            result.reason = "Low-grade setup in active session";
          }
          else
          {
             result.allow_trade = false;
-            result.reason = "Low-grade setup outside kill zone";
+            result.reason = "Low-grade setup outside active session";
          }
       }
-      // D setups blocked
+      // D setups: allow in kill zones only
+      else if(setup_grade_score >= 2.0)
+      {
+         if(session.in_kill_zone)
+         {
+            result.allow_trade = true;
+            result.reason = "Minimal setup in kill zone";
+         }
+         else
+         {
+            result.allow_trade = false;
+            result.reason = "Minimal setup outside kill zone";
+         }
+      }
+      // Very low setups blocked
       else
       {
          result.allow_trade = false;

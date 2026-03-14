@@ -78,8 +78,9 @@ private:
    //--- Bars to load per timeframe
    int m_bars_to_load;
 
-   //--- Entry filter toggle
+   //--- Entry filter toggles
    bool m_require_sweep_trap;
+   bool m_allow_grade_d;
 
    //--- Diagnostic counters (reset each bar for logging)
    int m_diag_price_in_zone;
@@ -93,7 +94,7 @@ private:
 
 public:
    COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1),
-                     m_require_sweep_trap(false)
+                     m_require_sweep_trap(false), m_allow_grade_d(false)
    {
       m_timeframes[0] = PERIOD_MN1;
       m_timeframes[1] = PERIOD_W1;
@@ -132,6 +133,7 @@ public:
 
    //--- Toggle sweep/trap requirement
    void SetRequireSweepTrap(bool require) { m_require_sweep_trap = require; }
+   void SetAllowGradeD(bool allow) { m_allow_grade_d = allow; }
 
    //--- Configure all engines
    void Configure(const POISettings &poi_cfg, const FVGSettings &fvg_cfg,
@@ -494,8 +496,8 @@ private:
             continue;
          }
 
-         // Grade D = no trade
-         if(signal.grade == GRADE_D)
+         // Grade D = no trade (unless allowed)
+         if(signal.grade == GRADE_D && !m_allow_grade_d)
          {
             m_diag_grade_d++;
             LogMessage(LOG_INFO, "QUALITY",
