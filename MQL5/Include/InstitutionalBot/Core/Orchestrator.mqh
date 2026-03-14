@@ -150,6 +150,7 @@ public:
          for(int i = 0; i < m_symbol_count; i++)
          {
             m_session.ResetDailyLevels(m_states[i].session_state);
+            m_states[i].recent_closed_count = 0;  // Reset so risk tracking stays active
          }
          LogMessage(LOG_INFO, "ORCHESTRATOR", "New day - risk state reset");
       }

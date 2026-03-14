@@ -81,7 +81,7 @@ public:
          state.current_session = SESSION_NEW_YORK;
          state.session_name    = "New York";
       }
-      else if(time_mins >= asian_start || time_mins < asian_end)
+      else if(time_mins >= asian_start && time_mins < asian_end)
       {
          state.current_session = SESSION_ASIAN;
          state.session_name    = "Asian";
@@ -123,7 +123,7 @@ public:
          int ny_end      = m_cfg.ny_end_hour * 60;
 
          // Asian session range
-         if(time_mins >= asian_start || time_mins < asian_end)
+         if(time_mins >= asian_start && time_mins < asian_end)
          {
             if(highs[i] > state.asian_high) state.asian_high = highs[i];
             if(lows[i] < state.asian_low)   state.asian_low  = lows[i];
