@@ -559,23 +559,48 @@ private:
             continue;
          }
 
-         // Calculate SL and TP
-         double entry_price = rev.entry_price;
+         // Calculate SL and TP using ACTUAL entry price (current market),
+         // not rev.entry_price which is the close of a bar 2-4 bars ago.
+         // The Executor fills at current ask (buy) or bid (sell), so SL/TP
+         // must be offset from that price to maintain correct R:R.
          bool is_buy = (signal.direction == SIGNAL_BUY);
-         double sl_price = m_sizer.DefaultSLPrice(symbol, entry_price, is_buy);
+         double entry_price = is_buy ? ask : bid;
+
+         // Smart SL: use POI zone boundary + buffer if tighter than default
+         double default_sl = m_sizer.DefaultSLPrice(symbol, entry_price, is_buy);
+         double poi_sl = 0;
+         SymbolSpec spec_sl = GetSymbolSpec(symbol);
+         double sl_buffer = 5.0 * spec_sl.pip_size;  // 5 pip buffer beyond zone
+         if(is_buy)
+            poi_sl = m_states[si].active_pois[p].zone_low - sl_buffer;
+         else
+            poi_sl = m_states[si].active_pois[p].zone_high + sl_buffer;
+
+         // Use POI-based SL if it's tighter (closer to entry) than default
+         double sl_price;
+         if(is_buy)
+            sl_price = MathMax(poi_sl, default_sl);  // Higher = tighter for buys
+         else
+            sl_price = MathMin(poi_sl, default_sl);  // Lower = tighter for sells
+
+         // Safety: ensure SL is at least 10 pips from entry
+         double min_sl_dist = 10.0 * spec_sl.pip_size;
+         if(MathAbs(entry_price - sl_price) < min_sl_dist)
+            sl_price = default_sl;  // Fall back to default if POI SL too tight
+
          double tp_price = 0;
          if(has_nearest_liq)
             tp_price = m_sizer.TPFromLiquidity(entry_price, nearest_liq.price, is_buy);
 
-         // Guarantee a TP exists — use 4:1 R:R if no liquidity target found
+         // Guarantee a TP exists — use 3:1 R:R if no liquidity target found
          double sl_dist = MathAbs(entry_price - sl_price);
          if(tp_price == 0 || MathAbs(tp_price - entry_price) < sl_dist * 2.0)
          {
-            // No TP or TP too close — set to 4:1 R:R minimum
+            // No TP or TP too close — set to 3:1 R:R minimum
             if(is_buy)
-               tp_price = entry_price + sl_dist * 4.0;
+               tp_price = entry_price + sl_dist * 3.0;
             else
-               tp_price = entry_price - sl_dist * 4.0;
+               tp_price = entry_price - sl_dist * 3.0;
          }
 
          // Position size

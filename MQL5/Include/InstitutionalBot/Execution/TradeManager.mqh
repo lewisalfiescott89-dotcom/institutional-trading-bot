@@ -66,35 +66,51 @@ public:
 
       double current_price = (trade.direction == TRADE_BUY) ? bid : ask;
 
-      // Check SL hit
-      if(trade.direction == TRADE_BUY)
+      // In live/backtest mode, check if MT5 already closed this position
+      // (e.g. SL/TP hit between ticks). If position gone, sync our state.
+      if(!m_dry_run && trade.ticket > 0)
       {
-         if(bid <= trade.sl_price && trade.sl_price > 0)
+         if(!PositionSelectByTicket(trade.ticket))
          {
-            CloseTrade(trade, trade.sl_price, "SL Hit");
-            return;
-         }
-         if(trade.tp_price > 0 && bid >= trade.tp_price)
-         {
-            CloseTrade(trade, trade.tp_price, "TP Hit");
-            return;
-         }
-      }
-      else // SELL
-      {
-         if(ask >= trade.sl_price && trade.sl_price > 0)
-         {
-            CloseTrade(trade, trade.sl_price, "SL Hit");
-            return;
-         }
-         if(trade.tp_price > 0 && ask <= trade.tp_price)
-         {
-            CloseTrade(trade, trade.tp_price, "TP Hit");
+            // Position was closed by MT5 (SL/TP hit or manual close)
+            // Use current price as approximate close price
+            CloseTrade(trade, current_price, "MT5 Closed");
             return;
          }
       }
 
-      // Breakeven: move SL to entry when trade reaches 1R profit
+      // In dry-run mode, manually check SL/TP
+      if(m_dry_run)
+      {
+         if(trade.direction == TRADE_BUY)
+         {
+            if(bid <= trade.sl_price && trade.sl_price > 0)
+            {
+               CloseTrade(trade, trade.sl_price, "SL Hit");
+               return;
+            }
+            if(trade.tp_price > 0 && bid >= trade.tp_price)
+            {
+               CloseTrade(trade, trade.tp_price, "TP Hit");
+               return;
+            }
+         }
+         else // SELL
+         {
+            if(ask >= trade.sl_price && trade.sl_price > 0)
+            {
+               CloseTrade(trade, trade.sl_price, "SL Hit");
+               return;
+            }
+            if(trade.tp_price > 0 && ask <= trade.tp_price)
+            {
+               CloseTrade(trade, trade.tp_price, "TP Hit");
+               return;
+            }
+         }
+      }
+
+      // Breakeven: move SL to entry when trade reaches 1.5R profit
       MoveToBreakeven(trade, current_price);
 
       // Trailing stop: at 2R profit, trail SL to lock in 1R
@@ -172,7 +188,7 @@ public:
    }
 
 private:
-   //--- Move SL to breakeven when trade reaches 1R profit
+   //--- Move SL to breakeven when trade reaches 1.5R profit
    void MoveToBreakeven(TradeData &trade, double current_price)
    {
       if(trade.sl_price <= 0 || trade.entry_price <= 0) return;
@@ -184,8 +200,8 @@ private:
       {
          // Already at or past breakeven?
          if(trade.sl_price >= trade.entry_price) return;
-         // Price moved 1R in our favor?
-         if(current_price >= trade.entry_price + risk_dist)
+         // Price moved 1.5R in our favor?
+         if(current_price >= trade.entry_price + risk_dist * 1.5)
          {
             double new_sl = trade.entry_price;
             trade.sl_price = new_sl;
@@ -199,8 +215,8 @@ private:
       {
          // Already at or past breakeven?
          if(trade.sl_price <= trade.entry_price) return;
-         // Price moved 1R in our favor?
-         if(current_price <= trade.entry_price - risk_dist)
+         // Price moved 1.5R in our favor?
+         if(current_price <= trade.entry_price - risk_dist * 1.5)
          {
             double new_sl = trade.entry_price;
             trade.sl_price = new_sl;

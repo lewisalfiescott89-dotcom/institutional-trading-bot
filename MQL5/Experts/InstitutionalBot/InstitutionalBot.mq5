@@ -82,7 +82,7 @@ input double   InpBRisk            = 0.5;       // B risk %
 input double   InpCRisk            = 0.25;      // C risk %
 input double   InpMaxDailyDD       = 5.0;       // Max daily drawdown %
 input int      InpMaxConsecLosses  = 5;         // Max consecutive losses
-input double   InpDefaultSLPips    = 20.0;      // Default SL (pips)
+input double   InpDefaultSLPips    = 30.0;      // Default SL (pips)
 
 input group "=== Safety Settings ==="
 input double   InpMaxSpread        = 5.0;       // Max spread (pips)
