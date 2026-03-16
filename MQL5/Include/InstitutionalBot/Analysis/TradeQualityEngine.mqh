@@ -79,14 +79,15 @@ public:
       }
 
       // 5. Structure alignment (0-10)
+      //    Counter-trend trades score 0 — they drag down overall profitability
       if(poi.direction == POI_BULLISH && structure.bias == BIAS_BULLISH)
          signal.score_breakdown.structure_alignment = 8.0;
       else if(poi.direction == POI_BEARISH && structure.bias == BIAS_BEARISH)
          signal.score_breakdown.structure_alignment = 8.0;
       else if(structure.bias == BIAS_NEUTRAL)
-         signal.score_breakdown.structure_alignment = 4.0;
+         signal.score_breakdown.structure_alignment = 3.0;
       else
-         signal.score_breakdown.structure_alignment = 2.0;  // Counter-trend
+         signal.score_breakdown.structure_alignment = 0.0;  // Counter-trend = 0 score
 
       // 6. Regime suitability (0-10)
       if(regime.regime == REGIME_TREND && structure.bias != BIAS_NEUTRAL)

@@ -76,7 +76,7 @@ input double   InpAPlusThreshold   = 7.0;       // A+ grade threshold
 input double   InpAThreshold       = 5.5;       // A grade threshold
 input double   InpBThreshold       = 4.0;       // B grade threshold
 input double   InpCThreshold       = 2.5;       // C grade threshold
-input bool     InpAllowGradeD      = true;      // Allow Grade D trades (lowest quality)
+input bool     InpAllowGradeD      = false;     // Allow Grade D trades (lowest quality)
 
 input group "=== Risk Settings ==="
 input double   InpAPlusRisk        = 2.0;       // A+ risk %
@@ -88,6 +88,12 @@ input int      InpMaxConsecLosses  = 5;         // Max consecutive losses
 input double   InpDefaultSLPips    = 30.0;      // Default SL (pips)
 input double   InpPartialTPPips    = 65.0;      // Partial TP distance (pips) - take profit at this level
 input double   InpPartialClosePct  = 50.0;      // Partial close % (50 = close 50% at partial TP)
+
+input group "=== Trade Frequency Controls ==="
+input int      InpMaxTradesPerDay  = 5;         // Max trades per day (all symbols)
+input int      InpCooldownBars     = 12;        // Min M5 bars between trades (12=1hr)
+input bool     InpRequireHTF       = true;       // Require D1 trend alignment (block counter-trend)
+input bool     InpRequireKZ        = false;      // Only trade during kill zones
 
 input group "=== Safety Settings ==="
 input double   InpMaxSpread        = 5.0;       // Max spread (pips)
@@ -233,6 +239,10 @@ int OnInit()
    orchestrator.SetRequireFVG(InpRequireFVG);
    orchestrator.SetRequireOB(InpRequireOB);
    orchestrator.SetRequireLiqConf(InpRequireLiqConf);
+   orchestrator.SetMaxTradesPerDay(InpMaxTradesPerDay);
+   orchestrator.SetMinBarsBetweenTrades(InpCooldownBars);
+   orchestrator.SetRequireHTFAlignment(InpRequireHTF);
+   orchestrator.SetRequireKillZone(InpRequireKZ);
 
    if(!orchestrator.Init(symbols, count, InpDryRun))
    {

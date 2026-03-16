@@ -90,6 +90,14 @@ private:
    bool m_require_ob;
    bool m_require_liq_conf;
 
+   //--- Trade frequency controls
+   int  m_max_trades_per_day;       // Max trades per day per symbol
+   int  m_min_bars_between_trades;  // Minimum M5 bars between trades (cooldown)
+   int  m_last_trade_bar[MAX_SYMBOLS]; // Bar index of last trade per symbol
+   bool m_require_htf_alignment;    // Require D1 trend alignment
+   bool m_require_kill_zone;        // Only trade during kill zones
+   ENUM_TREND_BIAS m_htf_bias[MAX_SYMBOLS]; // D1 trend bias per symbol
+
    //--- Diagnostic counters (reset each bar for logging)
    int m_diag_price_in_zone;
    int m_diag_has_reversal;
@@ -111,9 +119,16 @@ public:
    COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1),
                      m_require_sweep_trap(false), m_allow_grade_d(false), m_long_only(false),
                      m_require_fvg(false), m_require_ob(false), m_require_liq_conf(false),
+                     m_max_trades_per_day(5), m_min_bars_between_trades(12),
+                     m_require_htf_alignment(true), m_require_kill_zone(false),
                      m_total_bars_processed(0), m_total_zone_hits(0),
                      m_total_reversals(0), m_total_passed(0), m_total_trades(0)
    {
+      for(int i = 0; i < MAX_SYMBOLS; i++)
+      {
+         m_last_trade_bar[i] = -9999;
+         m_htf_bias[i] = BIAS_NEUTRAL;
+      }
       m_timeframes[0] = PERIOD_MN1;
       m_timeframes[1] = PERIOD_W1;
       m_timeframes[2] = PERIOD_D1;
@@ -160,6 +175,10 @@ public:
    void SetRequireFVG(bool require) { m_require_fvg = require; }
    void SetRequireOB(bool require) { m_require_ob = require; }
    void SetRequireLiqConf(bool require) { m_require_liq_conf = require; }
+   void SetMaxTradesPerDay(int max_trades) { m_max_trades_per_day = max_trades; }
+   void SetMinBarsBetweenTrades(int bars) { m_min_bars_between_trades = bars; }
+   void SetRequireHTFAlignment(bool require) { m_require_htf_alignment = require; }
+   void SetRequireKillZone(bool require) { m_require_kill_zone = require; }
 
    //--- Configure all engines
    void Configure(const POISettings &poi_cfg, const FVGSettings &fvg_cfg,
@@ -253,10 +272,35 @@ private:
       }
 
       // ================================================================
-      // STEP 2: Refresh symbol state
+      // STEP 2: Refresh symbol state + HTF trend analysis
       // ================================================================
       double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
       double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+
+      // HTF trend filter: analyse D1 structure to get higher-timeframe bias
+      // This prevents taking bearish trades in a strong D1 uptrend (and vice versa)
+      {
+         double d1_opens[], d1_highs[], d1_lows[], d1_closes[];
+         long d1_volumes[];
+         datetime d1_times[];
+         int d1_count = LoadOHLCV(symbol, PERIOD_D1, 200,
+                                   d1_opens, d1_highs, d1_lows, d1_closes,
+                                   d1_volumes, d1_times);
+         if(d1_count >= 50)
+         {
+            StructureResult d1_structure;
+            m_structure.Analyse(d1_opens, d1_highs, d1_lows, d1_closes,
+                                d1_count, d1_structure);
+            m_htf_bias[sym_idx] = d1_structure.bias;
+         }
+      }
+
+      // ================================================================
+      // EARLY EXIT: Skip new entries if daily trade limit reached
+      // ================================================================
+      bool skip_new_entries = false;
+      if(m_risk_state.total_trades_today >= m_max_trades_per_day)
+         skip_new_entries = true;
 
       // ================================================================
       // STEP 3: Update higher timeframe analysis + detect POIs + FVGs
@@ -719,6 +763,7 @@ private:
       for(int p = 0; p < m_states[si].active_poi_count; p++)
       {
          if(traded_this_bar) break;  // One trade per bar limit
+         if(skip_new_entries) break;  // Daily trade limit reached
          if(!m_states[si].active_pois[p].active || m_states[si].active_pois[p].invalidated) continue;
 
          // Max 2 concurrent open positions per symbol
@@ -887,14 +932,47 @@ private:
             continue;
          }
 
+         // STEP 12c: HTF trend alignment filter
+         //   Block counter-trend trades when D1 has a clear directional bias
+         if(m_require_htf_alignment)
+         {
+            bool counter_trend = false;
+            if(m_htf_bias[sym_idx] == BIAS_BULLISH && m_states[si].active_pois[p].direction == POI_BEARISH)
+               counter_trend = true;
+            if(m_htf_bias[sym_idx] == BIAS_BEARISH && m_states[si].active_pois[p].direction == POI_BULLISH)
+               counter_trend = true;
+            if(counter_trend)
+            {
+               LogMessage(LOG_INFO, "HTF_FILTER",
+                  StringFormat("%s POI#%d blocked: counter-trend vs D1 %s bias",
+                     symbol, m_states[si].active_pois[p].id,
+                     m_htf_bias[sym_idx] == BIAS_BULLISH ? "BULLISH" : "BEARISH"));
+               continue;
+            }
+         }
+
+         // STEP 12d: Kill zone filter
+         if(m_require_kill_zone && !m_states[si].in_kill_zone)
+         {
+            LogMessage(LOG_INFO, "KZ_FILTER",
+               StringFormat("%s POI#%d blocked: not in kill zone", symbol, m_states[si].active_pois[p].id));
+            continue;
+         }
+
+         // STEP 12e: Cooldown between trades
+         if((m_total_bars_processed - m_last_trade_bar[sym_idx]) < m_min_bars_between_trades)
+         {
+            continue;  // Still in cooldown period
+         }
+
          // STEP 13: Detect reversal candle on recent COMPLETED bars
          //   m5_count-1 = current forming bar (skip - incomplete candle)
          //   m5_count-2 = last completed bar
-         //   Check last 3 completed bars for best reversal
+         //   Check last 2 completed bars for best reversal (tighter window)
          bool look_for_bullish = (m_states[si].active_pois[p].direction == POI_BULLISH);
          ReversalData rev;
          rev.Init();
-         for(int rb = 2; rb <= 6 && rb < m5_count; rb++)
+         for(int rb = 2; rb <= 4 && rb < m5_count; rb++)
          {
             ReversalData candidate;
             m_reversal.DetectAt(m5_opens, m5_highs, m5_lows, m5_closes, m5_times,
@@ -1256,6 +1334,7 @@ private:
 
             m_risk_state.total_trades_today++;
             m_total_trades++;
+            m_last_trade_bar[sym_idx] = m_total_bars_processed;  // Cooldown tracking
 
             LogSignal(symbol, GradeToString(signal.grade),
                       signal.total_score,
@@ -1268,7 +1347,6 @@ private:
                   symbol, size.lot_size, free_margin));
          }
       }
-
       // ================================================================
       // STEP 18: Manage open trades
       // ================================================================
