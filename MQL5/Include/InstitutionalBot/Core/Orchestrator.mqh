@@ -1039,33 +1039,75 @@ private:
 
          // Position size
          SizeResult size;
-         m_sizer.Calculate(symbol, AccountInfoDouble(ACCOUNT_EQUITY),
+         double cur_equity = AccountInfoDouble(ACCOUNT_EQUITY);
+
+         // Minimum equity floor - don't trade if account is too depleted
+         if(cur_equity < 500.0)
+         {
+            LogMessage(LOG_WARNING, "SIZER",
+               StringFormat("%s equity too low (%.2f) - stopping trades", symbol, cur_equity));
+            traded_this_bar = true;
+            break;
+         }
+
+         m_sizer.Calculate(symbol, cur_equity,
                            risk_result.risk_pct, entry_price, sl_price, size);
 
-         // Cap lot size to prevent blowing account on a single trade
-         // Max 1.0 lot for safety, and check free margin can support it
+         // Cap lot size to prevent blowing account
          if(size.lot_size > 1.0)
             size.lot_size = 1.0;
+
+         // Use MT5's OrderCalcMargin for accurate margin calculation
+         ENUM_ORDER_TYPE order_type = is_buy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+         double margin_needed = 0;
          double free_margin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-         double margin_required = size.lot_size * entry_price * 100.0 /
-            AccountInfoInteger(ACCOUNT_LEVERAGE);
-         if(free_margin < margin_required * 1.2)  // 20% buffer
+         double min_vol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+         double vol_step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+         if(vol_step <= 0) vol_step = 0.01;
+
+         if(OrderCalcMargin(order_type, symbol, size.lot_size, entry_price, margin_needed))
          {
-            // Reduce lot size to fit available margin
-            double max_affordable = (free_margin * 0.8 * AccountInfoInteger(ACCOUNT_LEVERAGE)) /
-               (entry_price * 100.0);
-            double vol_step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
-            if(vol_step > 0)
-               max_affordable = MathFloor(max_affordable / vol_step) * vol_step;
-            size.lot_size = MathMax(SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN), max_affordable);
-            size.lot_size = NormalizeDouble(size.lot_size, 2);
-            if(size.lot_size < SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN))
+            // Need at least 20% buffer above margin requirement
+            if(free_margin < margin_needed * 1.2)
             {
-               LogMessage(LOG_WARNING, "SIZER",
-                  StringFormat("%s insufficient margin for min lot", symbol));
-               continue;
+               // Scale down: what lot size can we afford?
+               double ratio = (free_margin * 0.8) / margin_needed;
+               double affordable = size.lot_size * ratio;
+               affordable = MathFloor(affordable / vol_step) * vol_step;
+               affordable = NormalizeDouble(affordable, 2);
+
+               if(affordable < min_vol)
+               {
+                  LogMessage(LOG_WARNING, "SIZER",
+                     StringFormat("%s can't afford min lot (free=%.2f need=%.2f)",
+                        symbol, free_margin, margin_needed));
+                  traded_this_bar = true;  // Stop trying this bar
+                  break;
+               }
+               size.lot_size = affordable;
             }
          }
+         else
+         {
+            // OrderCalcMargin failed — fallback: use 50% of free margin max
+            // For XAUUSD, 1 lot ~= $5100 margin at 1:100 leverage
+            double safe_lots = (free_margin * 0.5) / (entry_price * 100.0 /
+               MathMax((double)AccountInfoInteger(ACCOUNT_LEVERAGE), 100.0));
+            safe_lots = MathFloor(safe_lots / vol_step) * vol_step;
+            safe_lots = NormalizeDouble(safe_lots, 2);
+            if(safe_lots < min_vol)
+            {
+               LogMessage(LOG_WARNING, "SIZER",
+                  StringFormat("%s margin calc failed, can't afford trade", symbol));
+               traded_this_bar = true;
+               break;
+            }
+            size.lot_size = MathMin(size.lot_size, safe_lots);
+         }
+
+         // Final sanity: lot size must be >= minimum and properly rounded
+         size.lot_size = MathMax(min_vol, size.lot_size);
+         size.lot_size = NormalizeDouble(size.lot_size, 2);
 
          // ================================================================
          // STEP 17: Execute trade
@@ -1073,6 +1115,10 @@ private:
          TradeData trade;
          bool executed = m_executor.Execute(signal, symbol, size.lot_size,
                                             sl_price, tp_price, trade);
+
+         // ALWAYS mark traded_this_bar after any execution attempt
+         // This prevents hammering the server with repeated failed orders
+         traded_this_bar = true;
 
          if(executed)
          {
@@ -1085,11 +1131,16 @@ private:
 
             m_risk_state.total_trades_today++;
             m_total_trades++;
-            traded_this_bar = true;  // Prevent more trades this bar
 
             LogSignal(symbol, GradeToString(signal.grade),
                       signal.total_score,
                       is_buy ? "BUY" : "SELL");
+         }
+         else
+         {
+            LogMessage(LOG_WARNING, "EXECUTOR",
+               StringFormat("%s trade failed (lots=%.2f free=%.2f) - skipping bar",
+                  symbol, size.lot_size, free_margin));
          }
       }
 
