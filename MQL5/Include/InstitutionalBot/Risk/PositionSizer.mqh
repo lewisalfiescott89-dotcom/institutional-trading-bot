@@ -39,6 +39,8 @@ public:
       : m_default_sl_pips(default_sl), m_min_lot(min_lot),
         m_max_lot(max_lot), m_lot_step(lot_step) {}
 
+   void SetDefaultSLPips(double sl_pips) { m_default_sl_pips = sl_pips; }
+
    //--- Calculate position size
    void Calculate(string symbol, double equity, double risk_pct,
                   double entry_price, double sl_price, SizeResult &result)

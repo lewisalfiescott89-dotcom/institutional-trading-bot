@@ -81,6 +81,7 @@ private:
    //--- Entry filter toggles
    bool m_require_sweep_trap;
    bool m_allow_grade_d;
+   bool m_long_only;
 
    //--- Diagnostic counters (reset each bar for logging)
    int m_diag_price_in_zone;
@@ -94,7 +95,7 @@ private:
 
 public:
    COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1),
-                     m_require_sweep_trap(false), m_allow_grade_d(false)
+                     m_require_sweep_trap(false), m_allow_grade_d(false), m_long_only(false)
    {
       m_timeframes[0] = PERIOD_MN1;
       m_timeframes[1] = PERIOD_W1;
@@ -121,6 +122,7 @@ public:
       m_risk_state.peak_equity = AccountInfoDouble(ACCOUNT_EQUITY);
 
       m_executor.SetDryRun(dry_run);
+      m_trade_mgr.SetDryRun(dry_run);
       ResetDiagnostics();
 
       LogMessage(LOG_INFO, "ORCHESTRATOR",
@@ -134,6 +136,7 @@ public:
    //--- Toggle sweep/trap requirement
    void SetRequireSweepTrap(bool require) { m_require_sweep_trap = require; }
    void SetAllowGradeD(bool allow) { m_allow_grade_d = allow; }
+   void SetLongOnly(bool long_only) { m_long_only = long_only; }
 
    //--- Configure all engines
    void Configure(const POISettings &poi_cfg, const FVGSettings &fvg_cfg,
@@ -156,6 +159,7 @@ public:
       m_commission.SetConfig(comm_cfg);
       m_safety.SetConfig(safe_cfg);
       m_trade_mgr.SetCommissionEngine(comm_cfg);
+      m_sizer.SetDefaultSLPips(risk_cfg.default_sl_pips);
    }
 
    //--- Main tick handler: run on every tick
@@ -425,6 +429,10 @@ private:
             }
          }
 
+         // Long-only filter: skip bearish POIs if enabled
+         if(m_long_only && m_states[si].active_pois[p].direction == POI_BEARISH)
+            continue;
+
          // STEP 13: Detect reversal candle on recent COMPLETED bars
          //   m5_count-1 = current forming bar (skip - incomplete candle)
          //   m5_count-2 = last completed bar
@@ -559,14 +567,15 @@ private:
          if(has_nearest_liq)
             tp_price = m_sizer.TPFromLiquidity(entry_price, nearest_liq.price, is_buy);
 
-         // Guarantee a TP exists — use 2:1 R:R if no liquidity target found
-         if(tp_price == 0)
+         // Guarantee a TP exists — use 4:1 R:R if no liquidity target found
+         double sl_dist = MathAbs(entry_price - sl_price);
+         if(tp_price == 0 || MathAbs(tp_price - entry_price) < sl_dist * 2.0)
          {
-            double sl_dist = MathAbs(entry_price - sl_price);
+            // No TP or TP too close — set to 4:1 R:R minimum
             if(is_buy)
-               tp_price = entry_price + sl_dist * 2.0;
+               tp_price = entry_price + sl_dist * 4.0;
             else
-               tp_price = entry_price - sl_dist * 2.0;
+               tp_price = entry_price - sl_dist * 4.0;
          }
 
          // Position size

@@ -5,6 +5,7 @@
 #ifndef TRADE_MANAGER_MQH
 #define TRADE_MANAGER_MQH
 
+#include <Trade/Trade.mqh>
 #include "../Models/Trade.mqh"
 #include "../Models/State.mqh"
 #include "../Risk/CommissionEngine.mqh"
@@ -15,10 +16,17 @@ class CTradeManager
 {
 private:
    CCommissionEngine m_commission;
+   CTrade            m_trade;
+   bool              m_dry_run;
 
 public:
-   CTradeManager() {}
+   CTradeManager() : m_dry_run(true)
+   {
+      m_trade.SetDeviationInPoints(10);
+      m_trade.SetTypeFilling(ORDER_FILLING_IOC);
+   }
    void SetCommissionEngine(const CommissionSettings &cfg) { m_commission.SetConfig(cfg); }
+   void SetDryRun(bool dry_run) { m_dry_run = dry_run; }
 
    //--- Update all open trades for a symbol
    void UpdateTrades(SymbolState &state, double current_bid, double current_ask)
@@ -88,6 +96,9 @@ public:
 
       // Breakeven: move SL to entry when trade reaches 1R profit
       MoveToBreakeven(trade, current_price);
+
+      // Trailing stop: at 2R profit, trail SL to lock in 1R
+      TrailingStop(trade, current_price);
 
       // Update floating PnL
       UpdateFloatingPnL(trade, current_price);
@@ -176,10 +187,12 @@ private:
          // Price moved 1R in our favor?
          if(current_price >= trade.entry_price + risk_dist)
          {
-            trade.sl_price = trade.entry_price;
+            double new_sl = trade.entry_price;
+            trade.sl_price = new_sl;
+            ModifyPositionSL(trade, new_sl);
             LogMessage(LOG_INFO, "TRADEMGR",
                StringFormat("%s BUY #%d SL moved to breakeven @ %.5f",
-                  trade.symbol, trade.id, trade.entry_price));
+                  trade.symbol, trade.id, new_sl));
          }
       }
       else // SELL
@@ -189,11 +202,78 @@ private:
          // Price moved 1R in our favor?
          if(current_price <= trade.entry_price - risk_dist)
          {
-            trade.sl_price = trade.entry_price;
+            double new_sl = trade.entry_price;
+            trade.sl_price = new_sl;
+            ModifyPositionSL(trade, new_sl);
             LogMessage(LOG_INFO, "TRADEMGR",
                StringFormat("%s SELL #%d SL moved to breakeven @ %.5f",
-                  trade.symbol, trade.id, trade.entry_price));
+                  trade.symbol, trade.id, new_sl));
          }
+      }
+   }
+
+   //--- Trailing stop: at 2R profit, trail SL to lock in 1R
+   void TrailingStop(TradeData &trade, double current_price)
+   {
+      if(trade.sl_price <= 0 || trade.entry_price <= 0) return;
+
+      double risk_dist = trade.RiskDistance();
+      if(risk_dist <= 0) return;
+
+      if(trade.direction == TRADE_BUY)
+      {
+         // Only trail after breakeven
+         if(trade.sl_price < trade.entry_price) return;
+         // At 2R+, trail SL to (current_price - 1R)
+         double profit_dist = current_price - trade.entry_price;
+         if(profit_dist >= risk_dist * 2.0)
+         {
+            double new_sl = current_price - risk_dist;
+            if(new_sl > trade.sl_price)
+            {
+               trade.sl_price = new_sl;
+               ModifyPositionSL(trade, new_sl);
+               LogMessage(LOG_INFO, "TRADEMGR",
+                  StringFormat("%s BUY #%d trailing SL to %.5f (locking %.1fR)",
+                     trade.symbol, trade.id, new_sl,
+                     (new_sl - trade.entry_price) / risk_dist));
+            }
+         }
+      }
+      else // SELL
+      {
+         if(trade.sl_price > trade.entry_price) return;
+         double profit_dist = trade.entry_price - current_price;
+         if(profit_dist >= risk_dist * 2.0)
+         {
+            double new_sl = current_price + risk_dist;
+            if(new_sl < trade.sl_price)
+            {
+               trade.sl_price = new_sl;
+               ModifyPositionSL(trade, new_sl);
+               LogMessage(LOG_INFO, "TRADEMGR",
+                  StringFormat("%s SELL #%d trailing SL to %.5f (locking %.1fR)",
+                     trade.symbol, trade.id, new_sl,
+                     (trade.entry_price - new_sl) / risk_dist));
+            }
+         }
+      }
+   }
+
+   //--- Modify the actual MT5 position SL (for live/backtest mode)
+   void ModifyPositionSL(const TradeData &trade, double new_sl)
+   {
+      if(m_dry_run || trade.ticket <= 0) return;
+
+      int digits = (int)SymbolInfoInteger(trade.symbol, SYMBOL_DIGITS);
+      new_sl = NormalizeDouble(new_sl, digits);
+      double tp = NormalizeDouble(trade.tp_price, digits);
+
+      if(!m_trade.PositionModify(trade.ticket, new_sl, tp))
+      {
+         LogMessage(LOG_WARNING, "TRADEMGR",
+            StringFormat("Failed to modify SL for ticket %d: %s",
+               trade.ticket, m_trade.ResultRetcodeDescription()));
       }
    }
 

@@ -25,6 +25,7 @@ input group "=== General Settings ==="
 input bool     InpDryRun           = false;    // Dry Run Mode (no real trades)
 input ENUM_LOG_LEVEL InpLogLevel   = LOG_INFO;  // Log Level
 input bool     InpRequireSweepTrap = false;     // Require sweep/trap (false=reversal only OK)
+input bool     InpLongOnly         = false;     // Long only mode (disable short trades)
 
 input group "=== Symbols ==="
 input string   InpSymbol1          = "XAUUSD";  // Symbol 1
@@ -81,7 +82,7 @@ input double   InpBRisk            = 0.5;       // B risk %
 input double   InpCRisk            = 0.25;      // C risk %
 input double   InpMaxDailyDD       = 5.0;       // Max daily drawdown %
 input int      InpMaxConsecLosses  = 5;         // Max consecutive losses
-input double   InpDefaultSLPips    = 30.0;      // Default SL (pips)
+input double   InpDefaultSLPips    = 20.0;      // Default SL (pips)
 
 input group "=== Safety Settings ==="
 input double   InpMaxSpread        = 5.0;       // Max spread (pips)
@@ -221,6 +222,7 @@ int OnInit()
 
    orchestrator.SetRequireSweepTrap(InpRequireSweepTrap);
    orchestrator.SetAllowGradeD(InpAllowGradeD);
+   orchestrator.SetLongOnly(InpLongOnly);
 
    if(!orchestrator.Init(symbols, count, InpDryRun))
    {
