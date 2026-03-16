@@ -136,7 +136,10 @@ public:
       }
 
       m_risk_state.Init();
-      m_risk_state.peak_equity = AccountInfoDouble(ACCOUNT_EQUITY);
+      // NOTE: Do NOT set peak_equity here. During backtesting, AccountInfoDouble()
+      // returns the REAL account equity at OnInit() time, not the backtest deposit.
+      // peak_equity starts at 0 and gets set correctly on the first tick via the
+      // update code: if(cur_equity > peak_equity) peak_equity = cur_equity;
 
       m_executor.SetDryRun(dry_run);
       m_trade_mgr.SetDryRun(dry_run);
