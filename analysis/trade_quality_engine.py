@@ -55,10 +55,11 @@ class TradeQualityEngine:
 
         # 4. Forecast alignment (max 10)
         if forecast and forecast.primary_target:
-            if poi.direction == POIDirection.BEARISH and forecast.draw_direction == "up":
-                # Price drawn up into supply = good
+            if poi.direction == POIDirection.BEARISH and forecast.draw_direction == "down":
+                # Supply POI, liquidity draw below = good for sells (toward TP)
                 bd.liquidity_forecast_alignment = 8.0
-            elif poi.direction == POIDirection.BULLISH and forecast.draw_direction == "down":
+            elif poi.direction == POIDirection.BULLISH and forecast.draw_direction == "up":
+                # Demand POI, liquidity draw above = good for buys (toward TP)
                 bd.liquidity_forecast_alignment = 8.0
             elif forecast.draw_direction == "neutral":
                 bd.liquidity_forecast_alignment = 3.0

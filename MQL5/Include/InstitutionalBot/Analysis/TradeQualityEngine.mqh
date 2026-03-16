@@ -67,10 +67,10 @@ public:
       if(forecast.confidence > 0)
       {
          bool aligned = false;
-         if(poi.direction == POI_BEARISH && forecast.draw_is_above)
-            aligned = true;  // Supply POI, liquidity draw above = good for sells
-         else if(poi.direction == POI_BULLISH && !forecast.draw_is_above)
-            aligned = true;  // Demand POI, liquidity draw below = good for buys
+         if(poi.direction == POI_BEARISH && !forecast.draw_is_above)
+            aligned = true;  // Supply POI, liquidity draw below = good for sells (toward TP)
+         else if(poi.direction == POI_BULLISH && forecast.draw_is_above)
+            aligned = true;  // Demand POI, liquidity draw above = good for buys (toward TP)
 
          if(aligned)
             signal.score_breakdown.forecast_alignment = forecast.confidence * 10.0;

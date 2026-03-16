@@ -151,8 +151,9 @@ public:
       // Net PnL
       trade.net_pnl = trade.gross_pnl - trade.commission;
 
-      // R-multiple
-      double risk_dist = trade.RiskDistance();
+      // R-multiple (use original SL distance, not current which may be at breakeven)
+      double risk_dist = trade.OriginalRiskDistance();
+      if(risk_dist <= 0) risk_dist = trade.RiskDistance();  // fallback
       if(risk_dist > 0)
       {
          double risk_pips = risk_dist / spec.pip_size;
@@ -193,7 +194,9 @@ private:
    {
       if(trade.sl_price <= 0 || trade.entry_price <= 0) return;
 
-      double risk_dist = trade.RiskDistance();
+      // Use original risk distance so this works correctly even if SL was already moved
+      double risk_dist = trade.OriginalRiskDistance();
+      if(risk_dist <= 0) risk_dist = trade.RiskDistance();  // fallback
       if(risk_dist <= 0) return;
 
       if(trade.direction == TRADE_BUY)
@@ -231,9 +234,10 @@ private:
    //--- Trailing stop: at 2R profit, trail SL to lock in 1R
    void TrailingStop(TradeData &trade, double current_price)
    {
-      if(trade.sl_price <= 0 || trade.entry_price <= 0) return;
+      if(trade.entry_price <= 0) return;
 
-      double risk_dist = trade.RiskDistance();
+      // Use original risk distance — after breakeven, RiskDistance() returns 0
+      double risk_dist = trade.OriginalRiskDistance();
       if(risk_dist <= 0) return;
 
       if(trade.direction == TRADE_BUY)

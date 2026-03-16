@@ -24,6 +24,7 @@ struct TradeData
    ENUM_TRADE_DIRECTION direction;
    double               entry_price;
    double               sl_price;
+   double               original_sl_price;
    double               tp_price;
    double               close_price;
    double               lot_size;
@@ -51,6 +52,7 @@ struct TradeData
       direction     = TRADE_BUY;
       entry_price   = 0;
       sl_price      = 0;
+      original_sl_price = 0;
       tp_price      = 0;
       close_price   = 0;
       lot_size      = 0;
@@ -71,10 +73,11 @@ struct TradeData
       signal_id     = "";
    }
 
-   double RiskDistance()   const { return MathAbs(entry_price - sl_price); }
-   double RewardDistance() const { return MathAbs(tp_price - entry_price); }
+   double RiskDistance()         { return MathAbs(entry_price - sl_price); }
+   double OriginalRiskDistance()  { return MathAbs(entry_price - original_sl_price); }
+   double RewardDistance()        { return MathAbs(tp_price - entry_price); }
 
-   double RRRatio() const
+   double RRRatio()
    {
       double rd = RiskDistance();
       if(rd == 0) return 0;

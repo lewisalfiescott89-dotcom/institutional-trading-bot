@@ -80,6 +80,7 @@ private:
          }
       }
 
+      trade.original_sl_price = trade.sl_price;
       trade.status   = STATUS_OPEN;
       trade.ticket   = -trade.id;  // Negative ticket = dry run
       trade.is_dry_run = true;
@@ -121,6 +122,7 @@ private:
       if(success)
       {
          trade.entry_price = entry;
+         trade.original_sl_price = trade.sl_price;
          trade.status      = STATUS_OPEN;
          trade.ticket      = (long)m_trade.ResultOrder();
          trade.is_dry_run  = false;
