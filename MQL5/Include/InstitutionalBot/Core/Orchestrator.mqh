@@ -734,22 +734,52 @@ private:
          double prev_low  = (m5_count >= 2) ? m5_lows[m5_count - 2]  : last_low;
          double prev_close= (m5_count >= 2) ? m5_closes[m5_count - 2] : last_close;
 
-         // STEP 11a: Check zone invalidation (Pepperstone 5M rule)
+         // STEP 11a: Zone invalidation — candle body closes through the zone
+         // If a candle closes with its body on the OTHER side of the zone,
+         // that zone is consumed/invalid (standard ICT rule).
+         // Check both current bar and previous completed bar.
+         double zone_hi = m_states[si].active_pois[p].zone_high;
+         double zone_lo = m_states[si].active_pois[p].zone_low;
+
+         if(m_states[si].active_pois[p].direction == POI_BEARISH)
+         {
+            // Bearish zone (resistance) — invalidated if candle closes above it
+            if(last_close > zone_hi || prev_close > zone_hi)
+            {
+               m_states[si].active_pois[p].Invalidate();
+               LogMessage(LOG_INFO, "INVALIDATION",
+                  StringFormat("%s POI #%d blown - body closed above bearish zone", symbol, m_states[si].active_pois[p].id));
+               continue;
+            }
+         }
+         else if(m_states[si].active_pois[p].direction == POI_BULLISH)
+         {
+            // Bullish zone (support) — invalidated if candle closes below it
+            if(last_close < zone_lo || prev_close < zone_lo)
+            {
+               m_states[si].active_pois[p].Invalidate();
+               LogMessage(LOG_INFO, "INVALIDATION",
+                  StringFormat("%s POI #%d blown - body closed below bullish zone", symbol, m_states[si].active_pois[p].id));
+               continue;
+            }
+         }
+
+         // STEP 11a-2: Wick probe rule (Pepperstone 5M)
          if(m_states[si].active_pois[p].wick_probe_pending)
          {
             // Previous bar had a wick probe - check if THIS bar opens past the zone
-            if(m_states[si].active_pois[p].direction == POI_BEARISH && last_open > m_states[si].active_pois[p].zone_high)
+            if(m_states[si].active_pois[p].direction == POI_BEARISH && last_open > zone_hi)
             {
                m_states[si].active_pois[p].Invalidate();
                LogMessage(LOG_INFO, "INVALIDATION",
-                  StringFormat("%s POI #%d blown - candle opened above zone", symbol, m_states[si].active_pois[p].id));
+                  StringFormat("%s POI #%d blown - candle opened above zone after wick", symbol, m_states[si].active_pois[p].id));
                continue;
             }
-            else if(m_states[si].active_pois[p].direction == POI_BULLISH && last_open < m_states[si].active_pois[p].zone_low)
+            else if(m_states[si].active_pois[p].direction == POI_BULLISH && last_open < zone_lo)
             {
                m_states[si].active_pois[p].Invalidate();
                LogMessage(LOG_INFO, "INVALIDATION",
-                  StringFormat("%s POI #%d blown - candle opened below zone", symbol, m_states[si].active_pois[p].id));
+                  StringFormat("%s POI #%d blown - candle opened below zone after wick", symbol, m_states[si].active_pois[p].id));
                continue;
             }
             m_states[si].active_pois[p].wick_probe_pending = false;
