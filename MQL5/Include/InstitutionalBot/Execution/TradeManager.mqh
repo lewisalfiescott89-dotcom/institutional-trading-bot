@@ -18,15 +18,22 @@ private:
    CCommissionEngine m_commission;
    CTrade            m_trade;
    bool              m_dry_run;
+   double            m_partial_tp_pips;
+   double            m_partial_close_pct;
 
 public:
-   CTradeManager() : m_dry_run(true)
+   CTradeManager() : m_dry_run(true), m_partial_tp_pips(65.0), m_partial_close_pct(0.50)
    {
       m_trade.SetDeviationInPoints(10);
       m_trade.SetTypeFilling(ORDER_FILLING_IOC);
    }
    void SetCommissionEngine(const CommissionSettings &cfg) { m_commission.SetConfig(cfg); }
    void SetDryRun(bool dry_run) { m_dry_run = dry_run; }
+   void SetPartialTP(double pips, double close_pct)
+   {
+      m_partial_tp_pips   = pips;
+      m_partial_close_pct = close_pct;
+   }
 
    //--- Update all open trades for a symbol
    void UpdateTrades(SymbolState &state, double current_bid, double current_ask)
@@ -110,6 +117,9 @@ public:
          }
       }
 
+      // Partial take-profit: close 50% at 60-70 pips profit, let rest run to TP
+      TakePartialProfit(trade, current_price);
+
       // Breakeven: move SL to entry when trade reaches 1.5R profit
       MoveToBreakeven(trade, current_price);
 
@@ -189,6 +199,104 @@ public:
    }
 
 private:
+   //--- Partial take-profit: close a portion of the position at a fixed pip distance
+   //--- Remaining position runs to the full TP
+   void TakePartialProfit(TradeData &trade, double current_price)
+   {
+      // Skip if already taken partial or partial TP disabled
+      if(trade.partial_taken) return;
+      if(m_partial_tp_pips <= 0 || m_partial_close_pct <= 0) return;
+      if(trade.entry_price <= 0) return;
+
+      // Get pip size for this symbol
+      SymbolSpec spec = GetSymbolSpec(trade.symbol);
+      double partial_dist = m_partial_tp_pips * spec.pip_size;
+
+      bool triggered = false;
+      if(trade.direction == TRADE_BUY)
+         triggered = (current_price >= trade.entry_price + partial_dist);
+      else
+         triggered = (current_price <= trade.entry_price - partial_dist);
+
+      if(!triggered) return;
+
+      // Calculate lots to close
+      double min_vol  = SymbolInfoDouble(trade.symbol, SYMBOL_VOLUME_MIN);
+      double vol_step = SymbolInfoDouble(trade.symbol, SYMBOL_VOLUME_STEP);
+      if(vol_step <= 0) vol_step = 0.01;
+
+      double close_lots = trade.lot_size * m_partial_close_pct;
+      close_lots = MathFloor(close_lots / vol_step) * vol_step;
+      close_lots = NormalizeDouble(close_lots, 2);
+
+      // If partial close would leave less than min volume, skip partial
+      double remaining = trade.lot_size - close_lots;
+      if(remaining < min_vol || close_lots < min_vol)
+      {
+         LogMessage(LOG_INFO, "PARTIAL",
+            StringFormat("%s #%d partial close skipped - lots too small (close=%.2f remain=%.2f min=%.2f)",
+               trade.symbol, trade.id, close_lots, remaining, min_vol));
+         trade.partial_taken = true;  // Don't retry
+         return;
+      }
+
+      // Save original lot size for reference
+      if(trade.original_lot_size <= 0)
+         trade.original_lot_size = trade.lot_size;
+
+      // Execute partial close
+      bool success = false;
+      if(!m_dry_run && trade.ticket > 0)
+      {
+         // MT5 partial close: close a portion of the position
+         success = m_trade.PositionClosePartial(trade.ticket, close_lots, 10);
+         if(!success)
+         {
+            LogMessage(LOG_WARNING, "PARTIAL",
+               StringFormat("%s #%d partial close FAILED: %s",
+                  trade.symbol, trade.id, m_trade.ResultRetcodeDescription()));
+            return;  // Don't mark as taken — retry next tick
+         }
+      }
+      else
+      {
+         // Dry run: just update lot size
+         success = true;
+      }
+
+      if(success)
+      {
+         trade.lot_size = remaining;
+         trade.partial_taken = true;
+
+         // Move SL to breakeven after taking partial — lock in risk-free on remainder
+         if(trade.direction == TRADE_BUY)
+         {
+            if(trade.sl_price < trade.entry_price)
+            {
+               trade.sl_price = trade.entry_price;
+               ModifyPositionSL(trade, trade.entry_price);
+            }
+         }
+         else
+         {
+            if(trade.sl_price > trade.entry_price)
+            {
+               trade.sl_price = trade.entry_price;
+               ModifyPositionSL(trade, trade.entry_price);
+            }
+         }
+
+         LogMessage(LOG_INFO, "PARTIAL",
+            StringFormat("%s %s #%d PARTIAL TP @ %.5f | Closed %.2f lots (%.0f%%) | Remaining %.2f lots → SL to BE",
+               trade.symbol,
+               (trade.direction == TRADE_BUY) ? "BUY" : "SELL",
+               trade.id, current_price,
+               close_lots, m_partial_close_pct * 100.0,
+               remaining));
+      }
+   }
+
    //--- Move SL to breakeven when trade reaches 1.5R profit
    void MoveToBreakeven(TradeData &trade, double current_price)
    {

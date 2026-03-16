@@ -43,6 +43,8 @@ struct TradeData
    bool                 is_dry_run;
    int                  parent_poi_id;
    string               signal_id;
+   bool                 partial_taken;
+   double               original_lot_size;
 
    void Init()
    {
@@ -71,6 +73,8 @@ struct TradeData
       is_dry_run    = false;
       parent_poi_id = 0;
       signal_id     = "";
+      partial_taken = false;
+      original_lot_size = 0;
    }
 
    double RiskDistance()         { return MathAbs(entry_price - sl_price); }

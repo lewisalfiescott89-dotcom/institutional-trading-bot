@@ -276,6 +276,8 @@ struct RiskSettings
    double max_daily_drawdown_pct;
    int    max_consecutive_losses;
    double default_sl_pips;
+   double partial_tp_pips;      // Distance in pips to take partial profit
+   double partial_close_pct;    // Percentage of position to close (0.5 = 50%)
 
    void Init()
    {
@@ -286,6 +288,8 @@ struct RiskSettings
       max_daily_drawdown_pct  = 5.0;
       max_consecutive_losses  = 5;
       default_sl_pips         = 30.0;
+      partial_tp_pips         = 65.0;   // Take partial at 65 pips (60-70 range)
+      partial_close_pct       = 0.50;   // Close 50% of position
    }
 };
 

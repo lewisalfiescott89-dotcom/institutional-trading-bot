@@ -182,6 +182,7 @@ public:
       m_commission.SetConfig(comm_cfg);
       m_safety.SetConfig(safe_cfg);
       m_trade_mgr.SetCommissionEngine(comm_cfg);
+      m_trade_mgr.SetPartialTP(risk_cfg.partial_tp_pips, risk_cfg.partial_close_pct);
       m_sizer.SetDefaultSLPips(risk_cfg.default_sl_pips);
    }
 
