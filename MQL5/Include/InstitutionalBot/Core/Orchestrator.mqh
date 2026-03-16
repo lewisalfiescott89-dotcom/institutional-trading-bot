@@ -1068,40 +1068,60 @@ private:
                tp_price = entry_price - sl_dist * 3.0;
          }
 
-         // Position size
+         // ================================================================
+         // STEP 16: Position sizing with BULLETPROOF margin checks
+         // ================================================================
          SizeResult size;
          double cur_equity = AccountInfoDouble(ACCOUNT_EQUITY);
+         double free_margin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+         double min_vol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+         double vol_step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+         if(min_vol <= 0) min_vol = 0.01;
+         if(vol_step <= 0) vol_step = 0.01;
 
-         // Minimum equity floor - don't trade if account is too depleted
+         // SAFETY LAYER 1: Minimum equity floor
          if(cur_equity < 500.0)
          {
-            LogMessage(LOG_WARNING, "SIZER",
-               StringFormat("%s equity too low (%.2f) - stopping trades", symbol, cur_equity));
+            LogMessage(LOG_WARNING, "MARGIN",
+               StringFormat("%s BLOCKED: equity too low (%.2f < $500)", symbol, cur_equity));
             traded_this_bar = true;
             break;
          }
 
+         // SAFETY LAYER 2: Minimum free margin floor
+         if(free_margin < 200.0)
+         {
+            LogMessage(LOG_WARNING, "MARGIN",
+               StringFormat("%s BLOCKED: free margin too low (%.2f < $200)", symbol, free_margin));
+            traded_this_bar = true;
+            break;
+         }
+
+         // Calculate base lot size from risk parameters
          m_sizer.Calculate(symbol, cur_equity,
                            risk_result.risk_pct, entry_price, sl_price, size);
 
-         // Cap lot size to prevent blowing account
+         double raw_lots = size.lot_size;
+
+         // SAFETY LAYER 3: Hard cap at 1.0 lots max
          if(size.lot_size > 1.0)
             size.lot_size = 1.0;
 
-         // Use MT5's OrderCalcMargin for accurate margin calculation
+         // SAFETY LAYER 4: OrderCalcMargin check
          ENUM_ORDER_TYPE order_type = is_buy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
          double margin_needed = 0;
-         double free_margin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-         double min_vol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
-         double vol_step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
-         if(vol_step <= 0) vol_step = 0.01;
+         bool margin_calc_ok = OrderCalcMargin(order_type, symbol, size.lot_size, entry_price, margin_needed);
 
-         if(OrderCalcMargin(order_type, symbol, size.lot_size, entry_price, margin_needed))
+         LogMessage(LOG_INFO, "MARGIN",
+            StringFormat("%s sizing: raw=%.2f capped=%.2f | equity=%.2f free=%.2f | OrderCalcMargin=%s margin=%.2f",
+               symbol, raw_lots, size.lot_size, cur_equity, free_margin,
+               margin_calc_ok ? "OK" : "FAIL", margin_needed));
+
+         if(margin_calc_ok && margin_needed > 0)
          {
-            // Need at least 20% buffer above margin requirement
+            // Scale down if can't afford with 20% buffer
             if(free_margin < margin_needed * 1.2)
             {
-               // Scale down: what lot size can we afford?
                double ratio = (free_margin * 0.8) / margin_needed;
                double affordable = size.lot_size * ratio;
                affordable = MathFloor(affordable / vol_step) * vol_step;
@@ -1109,47 +1129,121 @@ private:
 
                if(affordable < min_vol)
                {
-                  LogMessage(LOG_WARNING, "SIZER",
-                     StringFormat("%s can't afford min lot (free=%.2f need=%.2f)",
-                        symbol, free_margin, margin_needed));
-                  traded_this_bar = true;  // Stop trying this bar
+                  LogMessage(LOG_WARNING, "MARGIN",
+                     StringFormat("%s BLOCKED: can't afford min lot (free=%.2f need=%.2f for %.2f lots)",
+                        symbol, free_margin, margin_needed, size.lot_size));
+                  traded_this_bar = true;
                   break;
                }
+               LogMessage(LOG_INFO, "MARGIN",
+                  StringFormat("%s scaled down: %.2f -> %.2f lots (margin=%.2f free=%.2f)",
+                     symbol, size.lot_size, affordable, margin_needed, free_margin));
                size.lot_size = affordable;
             }
          }
          else
          {
-            // OrderCalcMargin failed — fallback: use 50% of free margin max
-            // For XAUUSD, 1 lot ~= $5100 margin at 1:100 leverage
-            double safe_lots = (free_margin * 0.5) / (entry_price * 100.0 /
-               MathMax((double)AccountInfoInteger(ACCOUNT_LEVERAGE), 100.0));
+            // SAFETY LAYER 5: OrderCalcMargin failed — use conservative formula
+            // For XAUUSD: 1 lot ~= entry_price * contract_size / leverage in margin
+            double leverage = MathMax((double)AccountInfoInteger(ACCOUNT_LEVERAGE), 100.0);
+            double est_margin_per_lot = entry_price * 100.0 / leverage;
+            double safe_lots = (free_margin * 0.5) / est_margin_per_lot;
             safe_lots = MathFloor(safe_lots / vol_step) * vol_step;
             safe_lots = NormalizeDouble(safe_lots, 2);
+
+            LogMessage(LOG_INFO, "MARGIN",
+               StringFormat("%s fallback calc: est_margin/lot=%.2f safe_lots=%.2f leverage=%.0f",
+                  symbol, est_margin_per_lot, safe_lots, leverage));
+
             if(safe_lots < min_vol)
             {
-               LogMessage(LOG_WARNING, "SIZER",
-                  StringFormat("%s margin calc failed, can't afford trade", symbol));
+               LogMessage(LOG_WARNING, "MARGIN",
+                  StringFormat("%s BLOCKED: fallback can't afford trade (free=%.2f est_margin=%.2f)",
+                     symbol, free_margin, est_margin_per_lot));
                traded_this_bar = true;
                break;
             }
             size.lot_size = MathMin(size.lot_size, safe_lots);
          }
 
-         // Final sanity: lot size must be >= minimum and properly rounded
+         // SAFETY LAYER 6: Final verification — try OrderCalcMargin with ACTUAL final lot size
+         double final_margin = 0;
+         bool final_check = OrderCalcMargin(order_type, symbol, size.lot_size, entry_price, final_margin);
+         if(final_check && final_margin > free_margin)
+         {
+            // Still too expensive! Iteratively halve until affordable
+            double try_lots = size.lot_size;
+            bool found_affordable = false;
+            for(int attempt = 0; attempt < 8; attempt++)
+            {
+               try_lots = try_lots * 0.5;
+               try_lots = MathFloor(try_lots / vol_step) * vol_step;
+               if(try_lots < min_vol) break;
+
+               double try_margin = 0;
+               if(OrderCalcMargin(order_type, symbol, try_lots, entry_price, try_margin))
+               {
+                  if(try_margin <= free_margin * 0.8)
+                  {
+                     size.lot_size = try_lots;
+                     found_affordable = true;
+                     LogMessage(LOG_INFO, "MARGIN",
+                        StringFormat("%s halved to %.2f lots (margin=%.2f free=%.2f)",
+                           symbol, try_lots, try_margin, free_margin));
+                     break;
+                  }
+               }
+            }
+            if(!found_affordable)
+            {
+               LogMessage(LOG_WARNING, "MARGIN",
+                  StringFormat("%s BLOCKED: even after halving, can't afford (free=%.2f final_margin=%.2f)",
+                     symbol, free_margin, final_margin));
+               traded_this_bar = true;
+               break;
+            }
+         }
+
+         // SAFETY LAYER 7: Absolute hard cap — never risk more than 60% of free margin
+         // Re-check one final time
+         double abs_margin = 0;
+         if(OrderCalcMargin(order_type, symbol, size.lot_size, entry_price, abs_margin))
+         {
+            if(abs_margin > free_margin * 0.6)
+            {
+               double capped = size.lot_size * (free_margin * 0.5) / abs_margin;
+               capped = MathFloor(capped / vol_step) * vol_step;
+               capped = NormalizeDouble(capped, 2);
+               if(capped < min_vol)
+               {
+                  LogMessage(LOG_WARNING, "MARGIN",
+                     StringFormat("%s BLOCKED: abs cap - can't afford (margin=%.2f > 60%% free=%.2f)",
+                        symbol, abs_margin, free_margin));
+                  traded_this_bar = true;
+                  break;
+               }
+               size.lot_size = capped;
+            }
+         }
+
+         // Final rounding
          size.lot_size = MathMax(min_vol, size.lot_size);
          size.lot_size = NormalizeDouble(size.lot_size, 2);
+
+         LogMessage(LOG_INFO, "MARGIN",
+            StringFormat("%s FINAL lot=%.2f | equity=%.2f free=%.2f",
+               symbol, size.lot_size, cur_equity, free_margin));
 
          // ================================================================
          // STEP 17: Execute trade
          // ================================================================
+         // Mark traded_this_bar BEFORE execute to prevent any possibility
+         // of a second trade firing in the same bar
+         traded_this_bar = true;
+
          TradeData trade;
          bool executed = m_executor.Execute(signal, symbol, size.lot_size,
                                             sl_price, tp_price, trade);
-
-         // ALWAYS mark traded_this_bar after any execution attempt
-         // This prevents hammering the server with repeated failed orders
-         traded_this_bar = true;
 
          if(executed)
          {
@@ -1170,7 +1264,7 @@ private:
          else
          {
             LogMessage(LOG_WARNING, "EXECUTOR",
-               StringFormat("%s trade failed (lots=%.2f free=%.2f) - skipping bar",
+               StringFormat("%s trade REJECTED by MT5 (lots=%.2f free=%.2f) - won't retry this bar",
                   symbol, size.lot_size, free_margin));
          }
       }
