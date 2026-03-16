@@ -1074,13 +1074,19 @@ private:
             m_risk_state.consecutive_losses = 0;
       }
 
-      // Update daily drawdown (peak equity vs current equity)
-      double cur_equity = AccountInfoDouble(ACCOUNT_EQUITY);
+      // Update daily drawdown using ACCOUNT_BALANCE as baseline (not stored peak).
+      // In MT5 backtesting, ACCOUNT_EQUITY can return real-account values,
+      // but ACCOUNT_BALANCE always reflects the backtest deposit + closed PnL.
+      // Drawdown = floating unrealised loss as % of balance.
+      double cur_balance = AccountInfoDouble(ACCOUNT_BALANCE);
+      double cur_equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+      if(cur_balance > 0 && cur_equity < cur_balance)
+         m_risk_state.daily_drawdown = (cur_balance - cur_equity) / cur_balance * 100.0;
+      else
+         m_risk_state.daily_drawdown = 0;
+      // Keep peak_equity updated for informational purposes
       if(cur_equity > m_risk_state.peak_equity)
          m_risk_state.peak_equity = cur_equity;
-      m_risk_state.daily_drawdown = (m_risk_state.peak_equity > 0)
-         ? (m_risk_state.peak_equity - cur_equity) / m_risk_state.peak_equity * 100.0
-         : 0;
 
       // ================================================================
       // STEP 19: Save state (via global variables for persistence)

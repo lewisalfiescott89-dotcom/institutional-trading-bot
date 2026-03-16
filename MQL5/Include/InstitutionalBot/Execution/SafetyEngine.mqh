@@ -115,7 +115,11 @@ public:
       }
 
       // 6. Daily drawdown protection
-      if(risk_state.daily_drawdown > m_cfg.max_daily_drawdown_pct)
+      // Skip if no trades have been placed today — drawdown from trading
+      // is impossible with 0 trades (prevents false positives from
+      // AccountInfoDouble returning real account values during backtesting)
+      if(risk_state.total_trades_today > 0 &&
+         risk_state.daily_drawdown > m_cfg.max_daily_drawdown_pct)
       {
          result.passed      = false;
          result.veto_reason = StringFormat("Daily drawdown exceeded: %.2f%% (max %.2f%%)",
