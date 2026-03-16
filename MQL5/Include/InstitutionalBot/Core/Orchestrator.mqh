@@ -710,9 +710,14 @@ private:
       // ================================================================
       // STEP 12-15: Check each active POI for trade signals
       // ================================================================
+      bool traded_this_bar = false;  // Only one trade per bar per symbol
       for(int p = 0; p < m_states[si].active_poi_count; p++)
       {
+         if(traded_this_bar) break;  // One trade per bar limit
          if(!m_states[si].active_pois[p].active || m_states[si].active_pois[p].invalidated) continue;
+
+         // Max 2 concurrent open positions per symbol
+         if(m_states[si].open_trade_count >= 2) break;
 
          double last_close = m5_closes[m5_count - 1];
          double last_open  = m5_opens[m5_count - 1];
@@ -1033,6 +1038,31 @@ private:
          m_sizer.Calculate(symbol, AccountInfoDouble(ACCOUNT_EQUITY),
                            risk_result.risk_pct, entry_price, sl_price, size);
 
+         // Cap lot size to prevent blowing account on a single trade
+         // Max 1.0 lot for safety, and check free margin can support it
+         if(size.lot_size > 1.0)
+            size.lot_size = 1.0;
+         double free_margin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+         double margin_required = size.lot_size * entry_price * 100.0 /
+            AccountInfoInteger(ACCOUNT_LEVERAGE);
+         if(free_margin < margin_required * 1.2)  // 20% buffer
+         {
+            // Reduce lot size to fit available margin
+            double max_affordable = (free_margin * 0.8 * AccountInfoInteger(ACCOUNT_LEVERAGE)) /
+               (entry_price * 100.0);
+            double vol_step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+            if(vol_step > 0)
+               max_affordable = MathFloor(max_affordable / vol_step) * vol_step;
+            size.lot_size = MathMax(SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN), max_affordable);
+            size.lot_size = NormalizeDouble(size.lot_size, 2);
+            if(size.lot_size < SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN))
+            {
+               LogMessage(LOG_WARNING, "SIZER",
+                  StringFormat("%s insufficient margin for min lot", symbol));
+               continue;
+            }
+         }
+
          // ================================================================
          // STEP 17: Execute trade
          // ================================================================
@@ -1051,6 +1081,7 @@ private:
 
             m_risk_state.total_trades_today++;
             m_total_trades++;
+            traded_this_bar = true;  // Prevent more trades this bar
 
             LogSignal(symbol, GradeToString(signal.grade),
                       signal.total_score,
