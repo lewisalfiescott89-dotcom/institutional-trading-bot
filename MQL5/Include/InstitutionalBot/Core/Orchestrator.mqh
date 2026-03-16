@@ -371,6 +371,10 @@ private:
       }
       m_states[si].all_fvg_count = total_fvgs;
 
+      // Update FVG fill state against M5 price data (M5 is superset of all HTF action)
+      m_fvg.UpdateFillState(m_states[si].all_fvgs, m_states[si].all_fvg_count,
+                            m5_highs, m5_lows, m5_count);
+
       // Update swept status for all liquidity pools
       m_liq_pool_engine.UpdateSweptStatus(m_states[si].liq_pools, m_states[si].liq_pool_count,
                                            m5_highs[m5_count-1], m5_lows[m5_count-1]);
