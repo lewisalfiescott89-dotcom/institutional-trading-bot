@@ -82,6 +82,7 @@ private:
    bool m_require_sweep_trap;
    bool m_allow_grade_d;
    bool m_long_only;
+   bool m_require_fvg;
 
    //--- Diagnostic counters (reset each bar for logging)
    int m_diag_price_in_zone;
@@ -95,7 +96,8 @@ private:
 
 public:
    COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1),
-                     m_require_sweep_trap(false), m_allow_grade_d(false), m_long_only(false)
+                     m_require_sweep_trap(false), m_allow_grade_d(false), m_long_only(false),
+                     m_require_fvg(false)
    {
       m_timeframes[0] = PERIOD_MN1;
       m_timeframes[1] = PERIOD_W1;
@@ -137,6 +139,7 @@ public:
    void SetRequireSweepTrap(bool require) { m_require_sweep_trap = require; }
    void SetAllowGradeD(bool allow) { m_allow_grade_d = allow; }
    void SetLongOnly(bool long_only) { m_long_only = long_only; }
+   void SetRequireFVG(bool require) { m_require_fvg = require; }
 
    //--- Configure all engines
    void Configure(const POISettings &poi_cfg, const FVGSettings &fvg_cfg,
@@ -225,11 +228,15 @@ private:
       double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
 
       // ================================================================
-      // STEP 3: Update higher timeframe analysis + detect POIs
+      // STEP 3: Update higher timeframe analysis + detect POIs + FVGs
       // ================================================================
       POIData all_pois[];
       int total_pois = 0;
       ArrayResize(all_pois, MAX_POIS);
+
+      // Multi-TF FVG collection
+      int total_fvgs = 0;
+      m_states[si].all_fvg_count = 0;
 
       for(int tf = 0; tf < NUM_ANALYSIS_TFS; tf++)
       {
@@ -252,13 +259,28 @@ private:
                                          tf_times, tf_count, symbol,
                                          m_timeframes[tf], tf_pois, 50);
 
-         // Add to master list
+         // Add to master POI list
          for(int p = 0; p < poi_count && total_pois < MAX_POIS; p++)
          {
             all_pois[total_pois] = tf_pois[p];
             total_pois++;
          }
+
+         // Detect FVGs on this timeframe (multi-TF FVG detection)
+         FVGData tf_fvgs[];
+         ArrayResize(tf_fvgs, MAX_FVGS);
+         int tf_fvg_count = m_fvg.Detect(tf_highs, tf_lows, tf_closes, tf_times,
+                                          tf_count, symbol, m_timeframes[tf],
+                                          tf_fvgs, MAX_FVGS);
+
+         // Add to master FVG list
+         for(int f = 0; f < tf_fvg_count && total_fvgs < MAX_ALL_FVGS; f++)
+         {
+            m_states[si].all_fvgs[total_fvgs] = tf_fvgs[f];
+            total_fvgs++;
+         }
       }
+      m_states[si].all_fvg_count = total_fvgs;
 
       // ================================================================
       // STEP 4: Project POIs to 5M chart
@@ -322,13 +344,82 @@ private:
       m_states[si].in_kill_zone = m_states[si].session_state.in_kill_zone;
 
       // ================================================================
-      // STEP 11: Detect FVGs and boost POIs
+      // STEP 11: Mark POIs with multi-TF FVG confluence + flip levels
       // ================================================================
-      FVGData fvgs[];
-      ArrayResize(fvgs, MAX_FVGS);
-      int fvg_count = m_fvg.Detect(m5_highs, m5_lows, m5_closes, m5_times,
-                                    m5_count, symbol, PERIOD_M5, fvgs, MAX_FVGS);
-      m_fvg.BoostPOIWithFVGs(m_states[si].active_pois, m_states[si].active_poi_count, fvgs, fvg_count);
+      // 11a: For each POI, check how many timeframes have overlapping unfilled FVGs
+      for(int p = 0; p < m_states[si].active_poi_count; p++)
+      {
+         if(!m_states[si].active_pois[p].active) continue;
+
+         int fvg_tf_hits = 0;
+         ENUM_TIMEFRAMES counted_tfs[NUM_ANALYSIS_TFS];
+         int counted_tf_count = 0;
+
+         for(int f = 0; f < m_states[si].all_fvg_count; f++)
+         {
+            if(m_states[si].all_fvgs[f].fill_state == FVG_FULLY_FILLED) continue;
+
+            // Check direction alignment
+            bool dir_ok = (m_states[si].active_pois[p].direction == POI_BULLISH &&
+                           m_states[si].all_fvgs[f].direction == FVG_BULLISH) ||
+                          (m_states[si].active_pois[p].direction == POI_BEARISH &&
+                           m_states[si].all_fvgs[f].direction == FVG_BEARISH);
+            if(!dir_ok) continue;
+
+            // Check zone overlap
+            if(m_states[si].all_fvgs[f].gap_low <= m_states[si].active_pois[p].zone_high &&
+               m_states[si].active_pois[p].zone_low <= m_states[si].all_fvgs[f].gap_high)
+            {
+               // Count unique timeframes
+               bool already_counted = false;
+               for(int c = 0; c < counted_tf_count; c++)
+               {
+                  if(counted_tfs[c] == m_states[si].all_fvgs[f].timeframe)
+                  {
+                     already_counted = true;
+                     break;
+                  }
+               }
+               if(!already_counted && counted_tf_count < NUM_ANALYSIS_TFS)
+               {
+                  counted_tfs[counted_tf_count] = m_states[si].all_fvgs[f].timeframe;
+                  counted_tf_count++;
+                  fvg_tf_hits++;
+               }
+            }
+         }
+
+         if(fvg_tf_hits > 0)
+         {
+            m_states[si].active_pois[p].has_fvg_confluence = true;
+            m_states[si].active_pois[p].fvg_tf_count = fvg_tf_hits;
+            m_states[si].active_pois[p].AddConfluence("multi_tf_fvg_x" + IntegerToString(fvg_tf_hits));
+            // Also boost the POI score directly for FVG confluence
+            m_states[si].active_pois[p].score += fvg_tf_hits * 2.0;
+         }
+      }
+
+      // 11b: Detect flip levels (old support turned resistance / vice versa)
+      FlipLevel flips[];
+      ArrayResize(flips, MAX_FLIP_LEVELS);
+      int flip_count = m_structure.DetectFlipLevels(m5_highs, m5_lows, m5_closes,
+                                                     m5_count, flips, MAX_FLIP_LEVELS);
+
+      // Mark POIs that sit at flip levels
+      SymbolSpec spec_flip = GetSymbolSpec(symbol);
+      double flip_tolerance = 10.0 * spec_flip.pip_size;  // 10 pip tolerance
+      for(int p = 0; p < m_states[si].active_poi_count; p++)
+      {
+         if(!m_states[si].active_pois[p].active) continue;
+         if(m_structure.IsNearFlipLevel(flips, flip_count,
+               m_states[si].active_pois[p].zone_low,
+               m_states[si].active_pois[p].zone_high, flip_tolerance))
+         {
+            m_states[si].active_pois[p].is_flip_level = true;
+            m_states[si].active_pois[p].AddConfluence("flip_level");
+            m_states[si].active_pois[p].score += 3.0;  // Flip level bonus
+         }
+      }
 
       // ================================================================
       // STEP 12-15: Check each active POI for trade signals
@@ -433,6 +524,15 @@ private:
          if(m_long_only && m_states[si].active_pois[p].direction == POI_BEARISH)
             continue;
 
+         // FVG confluence gate: if required, skip POIs without multi-TF FVG overlap
+         if(m_require_fvg && !m_states[si].active_pois[p].has_fvg_confluence)
+         {
+            LogMessage(LOG_INFO, "FILTER",
+               StringFormat("%s POI#%d no multi-TF FVG confluence - skipped",
+                  symbol, m_states[si].active_pois[p].id));
+            continue;
+         }
+
          // STEP 13: Detect reversal candle on recent COMPLETED bars
          //   m5_count-1 = current forming bar (skip - incomplete candle)
          //   m5_count-2 = last completed bar
@@ -505,7 +605,11 @@ private:
                               nearest_liq, has_nearest_liq,
                               forecast, structure, regime, timing,
                               best_sweep, has_sweep,
-                              best_trap, has_trap, rev, signal);
+                              best_trap, has_trap, rev,
+                              m_states[si].active_pois[p].has_fvg_confluence,
+                              m_states[si].active_pois[p].fvg_tf_count,
+                              m_states[si].active_pois[p].is_flip_level,
+                              signal);
 
          // Check timing allows trade
          m_timing.Evaluate(m_states[si].session_state, signal.total_score, 0, timing);

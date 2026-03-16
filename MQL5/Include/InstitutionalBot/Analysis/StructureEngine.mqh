@@ -11,6 +11,25 @@
 //--- Structure event types
 enum ENUM_STRUCTURE_EVENT { STRUCT_HH, STRUCT_HL, STRUCT_LH, STRUCT_LL, STRUCT_BOS, STRUCT_CHOCH };
 
+//--- Flip level: old support turned resistance (or vice versa)
+struct FlipLevel
+{
+   double price;
+   bool   is_resistance;  // true = former support now resistance
+   int    origin_bar;     // bar where the swing point was
+   int    break_bar;      // bar where it was broken
+
+   void Init()
+   {
+      price         = 0;
+      is_resistance = false;
+      origin_bar    = 0;
+      break_bar     = 0;
+   }
+};
+
+#define MAX_FLIP_LEVELS 100
+
 struct StructurePoint
 {
    ENUM_STRUCTURE_EVENT event_type;
@@ -182,6 +201,100 @@ private:
             }
          }
       }
+   }
+
+public:
+   //--- Detect flip levels: old support turned resistance (and vice versa)
+   //    A swing low that was broken (close below it) is now resistance.
+   //    A swing high that was broken (close above it) is now support.
+   int DetectFlipLevels(const double &highs[], const double &lows[],
+                        const double &closes[], int bar_count,
+                        FlipLevel &flips[], int max_flips)
+   {
+      int count = 0;
+      if(bar_count < m_swing_lookback * 2 + 1) return 0;
+
+      // Find swing points
+      int sh_indices[];
+      int sl_indices[];
+      int sh_count = DetectSwingHighs(highs, bar_count, m_swing_lookback, sh_indices);
+      int sl_count = DetectSwingLows(lows, bar_count, m_swing_lookback, sl_indices);
+
+      // Check swing lows: if broken (close below), it becomes resistance
+      for(int i = 0; i < sl_count && count < max_flips; i++)
+      {
+         int idx = sl_indices[i];
+         double level = lows[idx];
+         bool broken = false;
+         int break_bar = 0;
+
+         // Look for a bar that closed below this swing low
+         for(int k = idx + m_swing_lookback; k < bar_count; k++)
+         {
+            if(closes[k] < level)
+            {
+               broken = true;
+               break_bar = k;
+               break;
+            }
+         }
+
+         if(broken)
+         {
+            flips[count].Init();
+            flips[count].price         = level;
+            flips[count].is_resistance = true;  // Old support = new resistance
+            flips[count].origin_bar    = idx;
+            flips[count].break_bar     = break_bar;
+            count++;
+         }
+      }
+
+      // Check swing highs: if broken (close above), it becomes support
+      for(int i = 0; i < sh_count && count < max_flips; i++)
+      {
+         int idx = sh_indices[i];
+         double level = highs[idx];
+         bool broken = false;
+         int break_bar = 0;
+
+         // Look for a bar that closed above this swing high
+         for(int k = idx + m_swing_lookback; k < bar_count; k++)
+         {
+            if(closes[k] > level)
+            {
+               broken = true;
+               break_bar = k;
+               break;
+            }
+         }
+
+         if(broken)
+         {
+            flips[count].Init();
+            flips[count].price         = level;
+            flips[count].is_resistance = false;  // Old resistance = new support
+            flips[count].origin_bar    = idx;
+            flips[count].break_bar     = break_bar;
+            count++;
+         }
+      }
+
+      return count;
+   }
+
+   //--- Check if a price level is near a flip level
+   bool IsNearFlipLevel(const FlipLevel &flips[], int flip_count,
+                        double zone_low, double zone_high, double tolerance)
+   {
+      for(int i = 0; i < flip_count; i++)
+      {
+         // Flip level price is within or near the zone
+         if(flips[i].price >= zone_low - tolerance &&
+            flips[i].price <= zone_high + tolerance)
+            return true;
+      }
+      return false;
    }
 };
 

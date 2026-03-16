@@ -229,6 +229,8 @@ struct GradingSettings
    double sweep_weight;
    double trap_weight;
    double reversal_weight;
+   double fvg_weight;
+   double flip_weight;
 
    void Init()
    {
@@ -237,16 +239,18 @@ struct GradingSettings
       b_threshold      = 5.0;
       c_threshold      = 3.5;
 
-      poi_weight       = 0.15;
-      cluster_weight   = 0.10;
-      liquidity_weight = 0.10;
-      forecast_weight  = 0.10;
-      structure_weight = 0.10;
-      regime_weight    = 0.05;
-      timing_weight    = 0.10;
-      sweep_weight     = 0.10;
-      trap_weight      = 0.05;
-      reversal_weight  = 0.15;
+      poi_weight       = 0.10;
+      cluster_weight   = 0.08;
+      liquidity_weight = 0.08;
+      forecast_weight  = 0.08;
+      structure_weight = 0.08;
+      regime_weight    = 0.04;
+      timing_weight    = 0.08;
+      sweep_weight     = 0.08;
+      trap_weight      = 0.04;
+      reversal_weight  = 0.12;
+      fvg_weight       = 0.12;   // Multi-TF FVG confluence (high weight)
+      flip_weight      = 0.10;   // Flip level bonus (high weight)
    }
 };
 

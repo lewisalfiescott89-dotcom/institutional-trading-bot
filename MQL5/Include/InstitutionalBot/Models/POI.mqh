@@ -37,6 +37,9 @@ struct POIData
    int               confluence_count;
    bool              wick_probe_pending;
    int               wick_probe_bar_index;
+   bool              has_fvg_confluence;    // Multi-TF FVG overlaps this zone
+   int               fvg_tf_count;          // Number of timeframes with overlapping FVGs
+   bool              is_flip_level;         // Zone sits at a support/resistance flip
 
    void Init()
    {
@@ -58,6 +61,9 @@ struct POIData
       confluence_count     = 0;
       wick_probe_pending   = false;
       wick_probe_bar_index = 0;
+      has_fvg_confluence   = false;
+      fvg_tf_count         = 0;
+      is_flip_level        = false;
    }
 
    double MidPrice()      const { return (zone_low + zone_high) / 2.0; }

@@ -38,6 +38,8 @@ public:
                    const SweepData &sweep, bool has_sweep,
                    const TrapData &trap, bool has_trap,
                    const ReversalData &reversal,
+                   bool has_fvg_confluence, int fvg_tf_count,
+                   bool is_flip_level,
                    SignalData &signal)
    {
       signal.Init();
@@ -108,6 +110,19 @@ public:
       if(reversal.valid)
          signal.score_breakdown.reversal_quality = reversal.quality;
 
+      // 11. Multi-TF FVG confluence (0-10)
+      //     Major bonus for FVG overlap — this is core ICT methodology
+      if(has_fvg_confluence)
+      {
+         // Base score of 6 for having any FVG, +2 per extra timeframe
+         signal.score_breakdown.fvg_confluence = MathMin(6.0 + (fvg_tf_count - 1) * 2.0, 10.0);
+      }
+
+      // 12. Flip level bonus (0-10)
+      //     Old support turned resistance (or vice versa) = strong institutional level
+      if(is_flip_level)
+         signal.score_breakdown.flip_level_bonus = 8.0;
+
       // Calculate total and grade
       double total = signal.score_breakdown.Total();
       signal.total_score = total;
@@ -122,7 +137,9 @@ public:
                         signal.score_breakdown.timing_quality * m_cfg.timing_weight +
                         signal.score_breakdown.sweep_quality * m_cfg.sweep_weight +
                         signal.score_breakdown.trap_quality * m_cfg.trap_weight +
-                        signal.score_breakdown.reversal_quality * m_cfg.reversal_weight;
+                        signal.score_breakdown.reversal_quality * m_cfg.reversal_weight +
+                        signal.score_breakdown.fvg_confluence * m_cfg.fvg_weight +
+                        signal.score_breakdown.flip_level_bonus * m_cfg.flip_weight;
 
       signal.total_score = weighted;
 

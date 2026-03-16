@@ -42,6 +42,8 @@ struct ScoreBreakdown
    double sweep_quality;
    double trap_quality;
    double reversal_quality;
+   double fvg_confluence;      // Multi-TF FVG overlap bonus
+   double flip_level_bonus;    // Flip level (S/R polarity change) bonus
 
    void Init()
    {
@@ -55,13 +57,16 @@ struct ScoreBreakdown
       sweep_quality         = 0;
       trap_quality          = 0;
       reversal_quality      = 0;
+      fvg_confluence        = 0;
+      flip_level_bonus      = 0;
    }
 
    double Total() const
    {
       return poi_strength + cluster_strength + liquidity_confluence +
              forecast_alignment + structure_alignment + regime_suitability +
-             timing_quality + sweep_quality + trap_quality + reversal_quality;
+             timing_quality + sweep_quality + trap_quality + reversal_quality +
+             fvg_confluence + flip_level_bonus;
    }
 };
 

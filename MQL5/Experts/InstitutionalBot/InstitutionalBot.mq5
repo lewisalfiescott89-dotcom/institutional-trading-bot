@@ -26,6 +26,7 @@ input bool     InpDryRun           = false;    // Dry Run Mode (no real trades)
 input ENUM_LOG_LEVEL InpLogLevel   = LOG_INFO;  // Log Level
 input bool     InpRequireSweepTrap = false;     // Require sweep/trap (false=reversal only OK)
 input bool     InpLongOnly         = false;     // Long only mode (disable short trades)
+input bool     InpRequireFVG       = false;     // Require multi-TF FVG confluence (ICT method)
 
 input group "=== Symbols ==="
 input string   InpSymbol1          = "XAUUSD";  // Symbol 1
@@ -223,6 +224,7 @@ int OnInit()
    orchestrator.SetRequireSweepTrap(InpRequireSweepTrap);
    orchestrator.SetAllowGradeD(InpAllowGradeD);
    orchestrator.SetLongOnly(InpLongOnly);
+   orchestrator.SetRequireFVG(InpRequireFVG);
 
    if(!orchestrator.Init(symbols, count, InpDryRun))
    {

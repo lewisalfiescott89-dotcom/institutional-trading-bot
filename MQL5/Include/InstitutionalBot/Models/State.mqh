@@ -9,10 +9,12 @@
 #include "Trade.mqh"
 #include "Regime.mqh"
 #include "../Analysis/SessionEngine.mqh"
+#include "../Analysis/FVGEngine.mqh"
 
 #define MAX_POIS       200
 #define MAX_LIQUIDITY  200
 #define MAX_TRADES     50
+#define MAX_ALL_FVGS   500
 
 //+------------------------------------------------------------------+
 //| Per-Symbol State                                                  |
@@ -53,6 +55,10 @@ struct SymbolState
    int            reentry_poi_ids[MAX_POIS];
    int            reentry_count;
 
+   // Multi-TF FVGs (all timeframes merged)
+   FVGData        all_fvgs[MAX_ALL_FVGS];
+   int            all_fvg_count;
+
    // Persistent session state per symbol
    SessionState   session_state;
 
@@ -71,6 +77,7 @@ struct SymbolState
       recent_closed_count       = 0;
       regime.Init();
       reentry_count             = 0;
+      all_fvg_count             = 0;
       session_state.Init();
    }
 };
