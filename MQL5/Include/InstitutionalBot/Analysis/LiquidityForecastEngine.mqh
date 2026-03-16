@@ -15,7 +15,7 @@ public:
    CLiquidityForecastEngine() {}
 
    //--- Build a liquidity forecast from current levels and price
-   void Forecast(const LiquidityLevel &levels[], int level_count,
+   void Forecast(LiquidityLevel &levels[], int level_count,
                  double current_price, const MarketRegime &regime,
                  LiquidityForecast &forecast)
    {

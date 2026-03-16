@@ -1081,7 +1081,7 @@ private:
    }
 
    //--- Find nearest opposing liquidity for TP targeting
-   bool FindNearestOpposingLiquidity(const LiquidityLevel &levels[], int count,
+   bool FindNearestOpposingLiquidity(LiquidityLevel &levels[], int count,
                                      double current_price, ENUM_POI_DIRECTION poi_dir,
                                      LiquidityLevel &nearest)
    {

@@ -50,7 +50,7 @@ public:
    int Detect(const double &opens[], const double &highs[],
               const double &lows[], const double &closes[],
               const datetime &times[], int bar_count,
-              const LiquidityLevel &levels[], int level_count,
+              LiquidityLevel &levels[], int level_count,
               string symbol, TrapData &traps[], int max_traps)
    {
       int count = 0;
@@ -134,7 +134,7 @@ public:
    }
 
 private:
-   double ScoreTrap(const TrapData &trap, double level_price, const SymbolSpec &spec)
+   double ScoreTrap(TrapData &trap, double level_price, SymbolSpec &spec)
    {
       double pen_dist = MathAbs(trap.break_price - level_price);
       double pen_pips = pen_dist / spec.pip_size;

@@ -153,7 +153,7 @@ public:
 
    //--- Boost POI score if FVG overlaps
    void BoostPOIWithFVGs(POIData &pois[], int poi_count,
-                         const FVGData &fvgs[], int fvg_count)
+                         FVGData &fvgs[], int fvg_count)
    {
       for(int p = 0; p < poi_count; p++)
       {

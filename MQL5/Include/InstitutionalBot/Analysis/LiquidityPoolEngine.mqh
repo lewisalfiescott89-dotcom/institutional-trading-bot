@@ -172,7 +172,7 @@ public:
    int DetectStopRuns(const double &opens[], const double &highs[],
                       const double &lows[], const double &closes[],
                       const datetime &times[], int bar_count,
-                      const LiquidityPoolData &pools[], int pool_count,
+                      LiquidityPoolData &pools[], int pool_count,
                       string symbol, StopRunData &runs[], int max_runs)
    {
       int count = 0;
@@ -243,7 +243,7 @@ public:
    //| Add OB/BB liquidity pools                                        |
    //| Liquidity rests at order block and breaker block zones           |
    //+------------------------------------------------------------------+
-   int AddOBLiquidity(const OrderBlockData &obs[], int ob_count,
+   int AddOBLiquidity(OrderBlockData &obs[], int ob_count,
                       string symbol, ENUM_TIMEFRAMES tf,
                       LiquidityPoolData &pools[], int count, int max_pools)
    {
@@ -268,7 +268,7 @@ public:
       return count;
    }
 
-   int AddBBLiquidity(const BreakerBlockData &bbs[], int bb_count,
+   int AddBBLiquidity(BreakerBlockData &bbs[], int bb_count,
                       string symbol, ENUM_TIMEFRAMES tf,
                       LiquidityPoolData &pools[], int count, int max_pools)
    {
@@ -312,7 +312,7 @@ public:
    //+------------------------------------------------------------------+
    //| Check if a zone has nearby liquidity pools                       |
    //+------------------------------------------------------------------+
-   int CountNearbyPools(const LiquidityPoolData &pools[], int pool_count,
+   int CountNearbyPools(LiquidityPoolData &pools[], int pool_count,
                         double zone_low, double zone_high, double tolerance)
    {
       int nearby = 0;
@@ -333,7 +333,7 @@ private:
    //+------------------------------------------------------------------+
    int DetectBSL_SSL(const double &highs[], const double &lows[],
                      const datetime &times[], int bar_count,
-                     string symbol, ENUM_TIMEFRAMES tf, const SymbolSpec &spec,
+                     string symbol, ENUM_TIMEFRAMES tf, SymbolSpec &spec,
                      LiquidityPoolData &pools[], int count, int max_pools)
    {
       int sh_indices[];
@@ -384,7 +384,7 @@ private:
    //+------------------------------------------------------------------+
    int DetectEqualHiLo(const double &highs[], const double &lows[],
                        const datetime &times[], int bar_count,
-                       string symbol, ENUM_TIMEFRAMES tf, const SymbolSpec &spec,
+                       string symbol, ENUM_TIMEFRAMES tf, SymbolSpec &spec,
                        LiquidityPoolData &pools[], int count, int max_pools)
    {
       double tol = m_equal_tolerance_pips * spec.pip_size;
@@ -652,7 +652,7 @@ private:
    int DetectTrendlineLiquidity(const double &highs[], const double &lows[],
                                 const datetime &times[], int bar_count,
                                 string symbol, ENUM_TIMEFRAMES tf,
-                                const SymbolSpec &spec,
+                                SymbolSpec &spec,
                                 LiquidityPoolData &pools[], int count, int max_pools)
    {
       // Rising trendline: connect recent swing lows
@@ -732,7 +732,7 @@ private:
    int DetectRestingLiquidity(const double &highs[], const double &lows[],
                               const double &closes[], const datetime &times[],
                               int bar_count, string symbol, ENUM_TIMEFRAMES tf,
-                              const SymbolSpec &spec,
+                              SymbolSpec &spec,
                               LiquidityPoolData &pools[], int count, int max_pools)
    {
       if(bar_count < 2) return count;
@@ -788,7 +788,7 @@ private:
    }
 
    //--- Score a stop run
-   double ScoreStopRun(double penetration, double reversal, const SymbolSpec &spec)
+   double ScoreStopRun(double penetration, double reversal, SymbolSpec &spec)
    {
       double pen_score = MathMin(penetration / (spec.pip_size * 15.0), 1.0) * 4.0;
       double rev_score = MathMin(reversal / (spec.pip_size * 20.0), 1.0) * 4.0;

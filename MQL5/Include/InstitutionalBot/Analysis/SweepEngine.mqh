@@ -54,7 +54,7 @@ public:
    int Detect(const double &opens[], const double &highs[],
               const double &lows[], const double &closes[],
               const datetime &times[], int bar_count,
-              const LiquidityLevel &levels[], int level_count,
+              LiquidityLevel &levels[], int level_count,
               string symbol, SweepData &sweeps[], int max_sweeps)
    {
       int count = 0;
@@ -183,7 +183,7 @@ public:
 
 private:
    double ScoreSweep(double penetration, double rejection, double level_strength,
-                     const SymbolSpec &spec)
+                     SymbolSpec &spec)
    {
       double pen_score = MathMin(penetration / (spec.pip_size * 20.0), 1.0) * 3.0;
       double rej_score = rejection * 4.0;

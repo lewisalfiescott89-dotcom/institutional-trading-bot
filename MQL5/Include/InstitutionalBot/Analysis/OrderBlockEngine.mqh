@@ -156,7 +156,7 @@ public:
    //| Detect Breaker Blocks from broken Order Blocks                   |
    //| When an OB fails, it becomes a zone of opposite polarity         |
    //+------------------------------------------------------------------+
-   int DetectBreakerBlocks(const OrderBlockData &obs[], int ob_count,
+   int DetectBreakerBlocks(OrderBlockData &obs[], int ob_count,
                            const double &closes[], const datetime &times[],
                            int bar_count, string symbol,
                            BreakerBlockData &bbs[], int max_bbs)
@@ -243,7 +243,7 @@ public:
    //+------------------------------------------------------------------+
    //| Check if a POI zone overlaps with any active Order Block         |
    //+------------------------------------------------------------------+
-   bool IsNearOB(const OrderBlockData &obs[], int ob_count,
+   bool IsNearOB(OrderBlockData &obs[], int ob_count,
                  double zone_low, double zone_high, double tolerance,
                  bool check_bullish)
    {
@@ -264,7 +264,7 @@ public:
    //+------------------------------------------------------------------+
    //| Check if a POI zone overlaps with any active Breaker Block       |
    //+------------------------------------------------------------------+
-   bool IsNearBB(const BreakerBlockData &bbs[], int bb_count,
+   bool IsNearBB(BreakerBlockData &bbs[], int bb_count,
                  double zone_low, double zone_high, double tolerance,
                  bool check_bullish)
    {
