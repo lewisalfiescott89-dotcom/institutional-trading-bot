@@ -231,6 +231,11 @@ struct GradingSettings
    double reversal_weight;
    double fvg_weight;
    double flip_weight;
+   double ob_weight;         // Order block weight
+   double bb_weight;         // Breaker block weight
+   double liq_pool_weight;   // Liquidity pool confluence weight
+   double void_weight;       // Liquidity void weight
+   double stop_run_weight;   // Stop run weight
 
    void Init()
    {
@@ -239,18 +244,23 @@ struct GradingSettings
       b_threshold      = 5.0;
       c_threshold      = 3.5;
 
-      poi_weight       = 0.10;
-      cluster_weight   = 0.08;
-      liquidity_weight = 0.08;
-      forecast_weight  = 0.08;
-      structure_weight = 0.08;
-      regime_weight    = 0.04;
-      timing_weight    = 0.08;
-      sweep_weight     = 0.08;
-      trap_weight      = 0.04;
-      reversal_weight  = 0.12;
-      fvg_weight       = 0.12;   // Multi-TF FVG confluence (high weight)
-      flip_weight      = 0.10;   // Flip level bonus (high weight)
+      poi_weight       = 0.07;
+      cluster_weight   = 0.05;
+      liquidity_weight = 0.05;
+      forecast_weight  = 0.05;
+      structure_weight = 0.05;
+      regime_weight    = 0.03;
+      timing_weight    = 0.06;
+      sweep_weight     = 0.06;
+      trap_weight      = 0.03;
+      reversal_weight  = 0.10;
+      fvg_weight       = 0.10;   // Multi-TF FVG confluence
+      flip_weight      = 0.08;   // Flip level bonus
+      ob_weight        = 0.08;   // Order block confluence
+      bb_weight        = 0.06;   // Breaker block confluence
+      liq_pool_weight  = 0.07;   // Liquidity pool type confluence
+      void_weight      = 0.03;   // Liquidity void bonus
+      stop_run_weight  = 0.03;   // Stop run bonus
    }
 };
 

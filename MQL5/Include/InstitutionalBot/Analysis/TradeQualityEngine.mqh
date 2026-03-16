@@ -40,6 +40,9 @@ public:
                    const ReversalData &reversal,
                    bool has_fvg_confluence, int fvg_tf_count,
                    bool is_flip_level,
+                   bool has_ob, bool has_bb,
+                   int liq_pool_type_count,
+                   bool has_void, bool has_stop_run,
                    SignalData &signal)
    {
       signal.Init();
@@ -123,6 +126,31 @@ public:
       if(is_flip_level)
          signal.score_breakdown.flip_level_bonus = 8.0;
 
+      // 13. Order Block confluence (0-10)
+      //     POI sitting at an institutional order block = high quality
+      if(has_ob)
+         signal.score_breakdown.ob_bonus = 8.0;
+
+      // 14. Breaker Block confluence (0-10)
+      //     POI at a breaker block (failed OB, polarity reversal) = high quality
+      if(has_bb)
+         signal.score_breakdown.bb_bonus = 7.0;
+
+      // 15. Liquidity Pool type confluence (0-10)
+      //     More liquidity pool types overlapping = more institutional interest
+      if(liq_pool_type_count > 0)
+         signal.score_breakdown.liq_pool_bonus = MathMin(liq_pool_type_count * 2.0, 10.0);
+
+      // 16. Liquidity Void confluence (0-10)
+      //     Price returning to fill a void = institutional draw
+      if(has_void)
+         signal.score_breakdown.void_bonus = 6.0;
+
+      // 17. Stop Run bonus (0-10)
+      //     Liquidity sweep just occurred = institutional manipulation confirmed
+      if(has_stop_run)
+         signal.score_breakdown.stop_run_bonus = 7.0;
+
       // Calculate total and grade
       double total = signal.score_breakdown.Total();
       signal.total_score = total;
@@ -139,7 +167,12 @@ public:
                         signal.score_breakdown.trap_quality * m_cfg.trap_weight +
                         signal.score_breakdown.reversal_quality * m_cfg.reversal_weight +
                         signal.score_breakdown.fvg_confluence * m_cfg.fvg_weight +
-                        signal.score_breakdown.flip_level_bonus * m_cfg.flip_weight;
+                        signal.score_breakdown.flip_level_bonus * m_cfg.flip_weight +
+                        signal.score_breakdown.ob_bonus * m_cfg.ob_weight +
+                        signal.score_breakdown.bb_bonus * m_cfg.bb_weight +
+                        signal.score_breakdown.liq_pool_bonus * m_cfg.liq_pool_weight +
+                        signal.score_breakdown.void_bonus * m_cfg.void_weight +
+                        signal.score_breakdown.stop_run_bonus * m_cfg.stop_run_weight;
 
       signal.total_score = weighted;
 

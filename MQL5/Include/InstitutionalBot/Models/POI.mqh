@@ -40,6 +40,11 @@ struct POIData
    bool              has_fvg_confluence;    // Multi-TF FVG overlaps this zone
    int               fvg_tf_count;          // Number of timeframes with overlapping FVGs
    bool              is_flip_level;         // Zone sits at a support/resistance flip
+   bool              has_ob_confluence;     // Order block overlaps this zone
+   bool              has_bb_confluence;     // Breaker block overlaps this zone
+   int               liq_pool_type_count;   // Number of distinct liquidity pool types at zone
+   bool              has_void_confluence;   // Liquidity void overlaps this zone
+   bool              has_stop_run;          // Stop run detected near this zone
 
    void Init()
    {
@@ -64,6 +69,11 @@ struct POIData
       has_fvg_confluence   = false;
       fvg_tf_count         = 0;
       is_flip_level        = false;
+      has_ob_confluence    = false;
+      has_bb_confluence    = false;
+      liq_pool_type_count  = 0;
+      has_void_confluence  = false;
+      has_stop_run         = false;
    }
 
    double MidPrice()      const { return (zone_low + zone_high) / 2.0; }

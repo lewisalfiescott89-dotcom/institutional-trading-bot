@@ -44,6 +44,11 @@ struct ScoreBreakdown
    double reversal_quality;
    double fvg_confluence;      // Multi-TF FVG overlap bonus
    double flip_level_bonus;    // Flip level (S/R polarity change) bonus
+   double ob_bonus;            // Order block confluence bonus
+   double bb_bonus;            // Breaker block confluence bonus
+   double liq_pool_bonus;      // Liquidity pool type confluence bonus
+   double void_bonus;          // Liquidity void/vacuum block bonus
+   double stop_run_bonus;      // Stop run detected bonus
 
    void Init()
    {
@@ -59,6 +64,11 @@ struct ScoreBreakdown
       reversal_quality      = 0;
       fvg_confluence        = 0;
       flip_level_bonus      = 0;
+      ob_bonus              = 0;
+      bb_bonus              = 0;
+      liq_pool_bonus        = 0;
+      void_bonus            = 0;
+      stop_run_bonus        = 0;
    }
 
    double Total() const
@@ -66,7 +76,8 @@ struct ScoreBreakdown
       return poi_strength + cluster_strength + liquidity_confluence +
              forecast_alignment + structure_alignment + regime_suitability +
              timing_quality + sweep_quality + trap_quality + reversal_quality +
-             fvg_confluence + flip_level_bonus;
+             fvg_confluence + flip_level_bonus +
+             ob_bonus + bb_bonus + liq_pool_bonus + void_bonus + stop_run_bonus;
    }
 };
 

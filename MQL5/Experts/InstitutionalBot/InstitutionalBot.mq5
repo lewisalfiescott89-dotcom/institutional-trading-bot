@@ -27,6 +27,8 @@ input ENUM_LOG_LEVEL InpLogLevel   = LOG_INFO;  // Log Level
 input bool     InpRequireSweepTrap = false;     // Require sweep/trap (false=reversal only OK)
 input bool     InpLongOnly         = false;     // Long only mode (disable short trades)
 input bool     InpRequireFVG       = false;     // Require multi-TF FVG confluence (ICT method)
+input bool     InpRequireOB        = false;     // Require Order Block confluence
+input bool     InpRequireLiqConf   = false;     // Require liquidity pool confluence
 
 input group "=== Symbols ==="
 input string   InpSymbol1          = "XAUUSD";  // Symbol 1
@@ -225,6 +227,8 @@ int OnInit()
    orchestrator.SetAllowGradeD(InpAllowGradeD);
    orchestrator.SetLongOnly(InpLongOnly);
    orchestrator.SetRequireFVG(InpRequireFVG);
+   orchestrator.SetRequireOB(InpRequireOB);
+   orchestrator.SetRequireLiqConf(InpRequireLiqConf);
 
    if(!orchestrator.Init(symbols, count, InpDryRun))
    {

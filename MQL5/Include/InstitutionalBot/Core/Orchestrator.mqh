@@ -27,6 +27,8 @@
 #include "../Analysis/TrapEngine.mqh"
 #include "../Analysis/ReversalEngine.mqh"
 #include "../Analysis/TradeQualityEngine.mqh"
+#include "../Analysis/OrderBlockEngine.mqh"
+#include "../Analysis/LiquidityPoolEngine.mqh"
 #include "../Risk/RiskEngine.mqh"
 #include "../Risk/CommissionEngine.mqh"
 #include "../Risk/PositionSizer.mqh"
@@ -57,6 +59,8 @@ private:
    CTrapEngine              m_trap;
    CReversalEngine          m_reversal;
    CTradeQualityEngine      m_quality;
+   COrderBlockEngine        m_ob_engine;
+   CLiquidityPoolEngine     m_liq_pool_engine;
    CRiskEngine              m_risk;
    CCommissionEngine        m_commission;
    CPositionSizer           m_sizer;
@@ -83,6 +87,8 @@ private:
    bool m_allow_grade_d;
    bool m_long_only;
    bool m_require_fvg;
+   bool m_require_ob;
+   bool m_require_liq_conf;
 
    //--- Diagnostic counters (reset each bar for logging)
    int m_diag_price_in_zone;
@@ -97,7 +103,7 @@ private:
 public:
    COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1),
                      m_require_sweep_trap(false), m_allow_grade_d(false), m_long_only(false),
-                     m_require_fvg(false)
+                     m_require_fvg(false), m_require_ob(false), m_require_liq_conf(false)
    {
       m_timeframes[0] = PERIOD_MN1;
       m_timeframes[1] = PERIOD_W1;
@@ -140,6 +146,8 @@ public:
    void SetAllowGradeD(bool allow) { m_allow_grade_d = allow; }
    void SetLongOnly(bool long_only) { m_long_only = long_only; }
    void SetRequireFVG(bool require) { m_require_fvg = require; }
+   void SetRequireOB(bool require) { m_require_ob = require; }
+   void SetRequireLiqConf(bool require) { m_require_liq_conf = require; }
 
    //--- Configure all engines
    void Configure(const POISettings &poi_cfg, const FVGSettings &fvg_cfg,
@@ -234,9 +242,12 @@ private:
       int total_pois = 0;
       ArrayResize(all_pois, MAX_POIS);
 
-      // Multi-TF FVG collection
+      // Multi-TF collection: FVGs, Order Blocks, Breaker Blocks, Liquidity Pools
       int total_fvgs = 0;
       m_states[si].all_fvg_count = 0;
+      m_states[si].ob_count      = 0;
+      m_states[si].bb_count      = 0;
+      m_states[si].liq_pool_count = 0;
 
       for(int tf = 0; tf < NUM_ANALYSIS_TFS; tf++)
       {
@@ -279,8 +290,79 @@ private:
             m_states[si].all_fvgs[total_fvgs] = tf_fvgs[f];
             total_fvgs++;
          }
+
+         // Detect Order Blocks on this timeframe (multi-TF OB detection)
+         OrderBlockData tf_obs[];
+         ArrayResize(tf_obs, 50);
+         int tf_ob_count = m_ob_engine.DetectOrderBlocks(
+            tf_opens, tf_highs, tf_lows, tf_closes, tf_times, tf_count,
+            symbol, m_timeframes[tf], tf_obs, 50);
+
+         // Update OB status on this TF
+         m_ob_engine.UpdateOBStatus(tf_obs, tf_ob_count,
+                                     tf_highs, tf_lows, tf_closes, tf_count);
+
+         // Add to master OB list (tagged with their timeframe)
+         for(int ob = 0; ob < tf_ob_count && m_states[si].ob_count < MAX_ORDER_BLOCKS; ob++)
+         {
+            m_states[si].order_blocks[m_states[si].ob_count] = tf_obs[ob];
+            m_states[si].ob_count++;
+         }
+
+         // Detect Breaker Blocks from broken OBs on this TF
+         BreakerBlockData tf_bbs[];
+         ArrayResize(tf_bbs, 30);
+         int tf_bb_count = m_ob_engine.DetectBreakerBlocks(
+            tf_obs, tf_ob_count, tf_closes, tf_times, tf_count, symbol,
+            tf_bbs, 30);
+
+         m_ob_engine.UpdateBBStatus(tf_bbs, tf_bb_count,
+                                     tf_highs, tf_lows, tf_closes, tf_count);
+
+         for(int bb = 0; bb < tf_bb_count && m_states[si].bb_count < MAX_BREAKER_BLOCKS; bb++)
+         {
+            m_states[si].breaker_blocks[m_states[si].bb_count] = tf_bbs[bb];
+            m_states[si].bb_count++;
+         }
+
+         // Detect liquidity pools on this timeframe (multi-TF liquidity)
+         LiquidityPoolData tf_pools[];
+         ArrayResize(tf_pools, 100);
+         int tf_pool_count = m_liq_pool_engine.BuildPools(
+            tf_opens, tf_highs, tf_lows, tf_closes, tf_times, tf_count,
+            symbol, m_timeframes[tf], tf_pools, 100);
+
+         // Add OB/BB liquidity for this TF
+         tf_pool_count = m_liq_pool_engine.AddOBLiquidity(
+            tf_obs, tf_ob_count, symbol, m_timeframes[tf],
+            tf_pools, tf_pool_count, 100);
+
+         tf_pool_count = m_liq_pool_engine.AddBBLiquidity(
+            tf_bbs, tf_bb_count, symbol, m_timeframes[tf],
+            tf_pools, tf_pool_count, 100);
+
+         for(int lp = 0; lp < tf_pool_count && m_states[si].liq_pool_count < MAX_LIQ_POOLS; lp++)
+         {
+            m_states[si].liq_pools[m_states[si].liq_pool_count] = tf_pools[lp];
+            m_states[si].liq_pool_count++;
+         }
       }
       m_states[si].all_fvg_count = total_fvgs;
+
+      // Update swept status for all liquidity pools
+      m_liq_pool_engine.UpdateSweptStatus(m_states[si].liq_pools, m_states[si].liq_pool_count,
+                                           m5_highs[m5_count-1], m5_lows[m5_count-1]);
+
+      // Detect liquidity voids on M5
+      m_states[si].vacuum_count = m_liq_pool_engine.DetectVoids(
+         m5_opens, m5_highs, m5_lows, m5_closes, m5_times, m5_count,
+         symbol, PERIOD_M5, m_states[si].vacuum_blocks, MAX_VACUUM_BLOCKS);
+
+      // Detect stop runs using all multi-TF pools
+      m_states[si].stop_run_count = m_liq_pool_engine.DetectStopRuns(
+         m5_opens, m5_highs, m5_lows, m5_closes, m5_times, m5_count,
+         m_states[si].liq_pools, m_states[si].liq_pool_count,
+         symbol, m_states[si].stop_runs, MAX_STOP_RUNS);
 
       // ================================================================
       // STEP 4: Project POIs to 5M chart
@@ -422,6 +504,188 @@ private:
       }
 
       // ================================================================
+      // STEP 11c: Mark POIs with MULTI-TF OB/BB/liquidity confluence
+      //           A level only counts as "multi-TF confluence" if it
+      //           appears on M5 AND at least one higher timeframe.
+      // ================================================================
+      double ob_tol = 10.0 * spec_flip.pip_size;
+      for(int p = 0; p < m_states[si].active_poi_count; p++)
+      {
+         if(!m_states[si].active_pois[p].active) continue;
+
+         bool check_bull = (m_states[si].active_pois[p].direction == POI_BULLISH);
+         double poi_lo = m_states[si].active_pois[p].zone_low;
+         double poi_hi = m_states[si].active_pois[p].zone_high;
+
+         // --- Multi-TF OB confluence: count unique TFs with OB overlapping this POI
+         int ob_tf_hits = 0;
+         bool ob_has_m5 = false;
+         bool ob_has_htf = false;
+         ENUM_TIMEFRAMES ob_counted_tfs[NUM_ANALYSIS_TFS];
+         int ob_counted_tf_count = 0;
+
+         for(int ob = 0; ob < m_states[si].ob_count; ob++)
+         {
+            if(!m_states[si].order_blocks[ob].active) continue;
+            if(check_bull && m_states[si].order_blocks[ob].direction != OB_BULLISH) continue;
+            if(!check_bull && m_states[si].order_blocks[ob].direction != OB_BEARISH) continue;
+
+            // Check zone overlap
+            if(m_states[si].order_blocks[ob].zone_low - ob_tol <= poi_hi &&
+               poi_lo <= m_states[si].order_blocks[ob].zone_high + ob_tol)
+            {
+               // Count unique timeframes
+               ENUM_TIMEFRAMES ob_tf = m_states[si].order_blocks[ob].timeframe;
+               bool already = false;
+               for(int c = 0; c < ob_counted_tf_count; c++)
+               {
+                  if(ob_counted_tfs[c] == ob_tf) { already = true; break; }
+               }
+               if(!already && ob_counted_tf_count < NUM_ANALYSIS_TFS)
+               {
+                  ob_counted_tfs[ob_counted_tf_count] = ob_tf;
+                  ob_counted_tf_count++;
+                  ob_tf_hits++;
+                  if(ob_tf == PERIOD_M5) ob_has_m5 = true;
+                  else                   ob_has_htf = true;
+               }
+            }
+         }
+
+         // OB confluence requires M5 + at least 1 higher TF
+         if(ob_has_m5 && ob_has_htf)
+         {
+            m_states[si].active_pois[p].has_ob_confluence = true;
+            m_states[si].active_pois[p].AddConfluence("multi_tf_ob_x" + IntegerToString(ob_tf_hits));
+            m_states[si].active_pois[p].score += ob_tf_hits * 2.0;
+         }
+         else if(ob_tf_hits > 0)
+         {
+            // Single-TF OB still gives partial credit
+            m_states[si].active_pois[p].has_ob_confluence = true;
+            m_states[si].active_pois[p].AddConfluence("single_tf_ob");
+            m_states[si].active_pois[p].score += 1.5;
+         }
+
+         // --- Multi-TF BB confluence: count unique TFs with BB overlapping
+         int bb_tf_hits = 0;
+         bool bb_has_m5 = false;
+         bool bb_has_htf = false;
+         ENUM_TIMEFRAMES bb_counted_tfs[NUM_ANALYSIS_TFS];
+         int bb_counted_tf_count = 0;
+
+         for(int bb = 0; bb < m_states[si].bb_count; bb++)
+         {
+            if(!m_states[si].breaker_blocks[bb].active) continue;
+            if(check_bull && m_states[si].breaker_blocks[bb].direction != OB_BULLISH) continue;
+            if(!check_bull && m_states[si].breaker_blocks[bb].direction != OB_BEARISH) continue;
+
+            if(m_states[si].breaker_blocks[bb].zone_low - ob_tol <= poi_hi &&
+               poi_lo <= m_states[si].breaker_blocks[bb].zone_high + ob_tol)
+            {
+               ENUM_TIMEFRAMES bb_tf = m_states[si].breaker_blocks[bb].timeframe;
+               bool already = false;
+               for(int c = 0; c < bb_counted_tf_count; c++)
+               {
+                  if(bb_counted_tfs[c] == bb_tf) { already = true; break; }
+               }
+               if(!already && bb_counted_tf_count < NUM_ANALYSIS_TFS)
+               {
+                  bb_counted_tfs[bb_counted_tf_count] = bb_tf;
+                  bb_counted_tf_count++;
+                  bb_tf_hits++;
+                  if(bb_tf == PERIOD_M5) bb_has_m5 = true;
+                  else                   bb_has_htf = true;
+               }
+            }
+         }
+
+         if(bb_has_m5 && bb_has_htf)
+         {
+            m_states[si].active_pois[p].has_bb_confluence = true;
+            m_states[si].active_pois[p].AddConfluence("multi_tf_bb_x" + IntegerToString(bb_tf_hits));
+            m_states[si].active_pois[p].score += bb_tf_hits * 1.5;
+         }
+         else if(bb_tf_hits > 0)
+         {
+            m_states[si].active_pois[p].has_bb_confluence = true;
+            m_states[si].active_pois[p].AddConfluence("single_tf_bb");
+            m_states[si].active_pois[p].score += 1.0;
+         }
+
+         // --- Multi-TF Liquidity Pool confluence:
+         //     Count unique (pool_type, timeframe) pairs near this POI.
+         //     A pool type that appears on M5 + higher TF = multi-TF confluence
+         int pool_types_with_multi_tf = 0;
+         int total_nearby_pools = 0;
+
+         // Check each pool type for multi-TF presence
+         for(int pt = 0; pt < 15; pt++)  // 15 ENUM_LIQ_POOL_TYPE values
+         {
+            ENUM_LIQ_POOL_TYPE pool_type = (ENUM_LIQ_POOL_TYPE)pt;
+            bool has_on_m5 = false;
+            bool has_on_htf = false;
+
+            for(int lp = 0; lp < m_states[si].liq_pool_count; lp++)
+            {
+               if(!m_states[si].liq_pools[lp].active || m_states[si].liq_pools[lp].swept) continue;
+               if(m_states[si].liq_pools[lp].pool_type != pool_type) continue;
+
+               // Check if this pool's price is near the POI zone
+               if(m_states[si].liq_pools[lp].price >= poi_lo - ob_tol &&
+                  m_states[si].liq_pools[lp].price <= poi_hi + ob_tol)
+               {
+                  total_nearby_pools++;
+                  if(m_states[si].liq_pools[lp].timeframe == PERIOD_M5)
+                     has_on_m5 = true;
+                  else
+                     has_on_htf = true;
+               }
+            }
+
+            if(has_on_m5 && has_on_htf)
+               pool_types_with_multi_tf++;
+         }
+
+         m_states[si].active_pois[p].liq_pool_type_count = total_nearby_pools;
+         if(pool_types_with_multi_tf > 0)
+         {
+            m_states[si].active_pois[p].AddConfluence("multi_tf_liq_x" + IntegerToString(pool_types_with_multi_tf));
+            m_states[si].active_pois[p].score += pool_types_with_multi_tf * 1.5;
+         }
+         else if(total_nearby_pools > 0)
+         {
+            m_states[si].active_pois[p].AddConfluence("liq_pools_x" + IntegerToString(total_nearby_pools));
+         }
+
+         // Check vacuum/void confluence
+         for(int v = 0; v < m_states[si].vacuum_count; v++)
+         {
+            if(m_states[si].vacuum_blocks[v].filled) continue;
+            if(m_states[si].vacuum_blocks[v].zone_low <= poi_hi &&
+               poi_lo <= m_states[si].vacuum_blocks[v].zone_high)
+            {
+               m_states[si].active_pois[p].has_void_confluence = true;
+               m_states[si].active_pois[p].AddConfluence("liquidity_void");
+               break;
+            }
+         }
+
+         // Check stop run confluence (recent stop run near this POI)
+         for(int sr = 0; sr < m_states[si].stop_run_count; sr++)
+         {
+            double sr_price = m_states[si].stop_runs[sr].swept_level;
+            if(sr_price >= poi_lo - ob_tol && sr_price <= poi_hi + ob_tol)
+            {
+               m_states[si].active_pois[p].has_stop_run = true;
+               m_states[si].active_pois[p].AddConfluence("stop_run");
+               m_states[si].active_pois[p].score += 2.0;
+               break;
+            }
+         }
+      }
+
+      // ================================================================
       // STEP 12-15: Check each active POI for trade signals
       // ================================================================
       for(int p = 0; p < m_states[si].active_poi_count; p++)
@@ -533,6 +797,25 @@ private:
             continue;
          }
 
+         // OB confluence gate: if required, skip POIs without order block overlap
+         if(m_require_ob && !m_states[si].active_pois[p].has_ob_confluence)
+         {
+            LogMessage(LOG_INFO, "FILTER",
+               StringFormat("%s POI#%d no OB confluence - skipped",
+                  symbol, m_states[si].active_pois[p].id));
+            continue;
+         }
+
+         // Liquidity pool confluence gate: require at least 2 pool types overlapping
+         if(m_require_liq_conf && m_states[si].active_pois[p].liq_pool_type_count < 2)
+         {
+            LogMessage(LOG_INFO, "FILTER",
+               StringFormat("%s POI#%d insufficient liq pool confluence (%d types) - skipped",
+                  symbol, m_states[si].active_pois[p].id,
+                  m_states[si].active_pois[p].liq_pool_type_count));
+            continue;
+         }
+
          // STEP 13: Detect reversal candle on recent COMPLETED bars
          //   m5_count-1 = current forming bar (skip - incomplete candle)
          //   m5_count-2 = last completed bar
@@ -609,6 +892,11 @@ private:
                               m_states[si].active_pois[p].has_fvg_confluence,
                               m_states[si].active_pois[p].fvg_tf_count,
                               m_states[si].active_pois[p].is_flip_level,
+                              m_states[si].active_pois[p].has_ob_confluence,
+                              m_states[si].active_pois[p].has_bb_confluence,
+                              m_states[si].active_pois[p].liq_pool_type_count,
+                              m_states[si].active_pois[p].has_void_confluence,
+                              m_states[si].active_pois[p].has_stop_run,
                               signal);
 
          // Check timing allows trade
@@ -779,8 +1067,11 @@ private:
       }
 
       LogMessage(LOG_INFO, "CYCLE",
-         StringFormat("%s | POIs=%d LIQ=%d Trades=%d | Session=%s KZ=%s | Regime=%s Bias=%s",
+         StringFormat("%s | POIs=%d LIQ=%d OBs=%d BBs=%d LiqPools=%d Voids=%d StopRuns=%d Trades=%d | Session=%s KZ=%s | Regime=%s Bias=%s",
             symbol, m_states[si].active_poi_count, m_states[si].active_liq_count,
+            m_states[si].ob_count, m_states[si].bb_count,
+            m_states[si].liq_pool_count, m_states[si].vacuum_count,
+            m_states[si].stop_run_count,
             m_states[si].open_trade_count, m_states[si].session_name,
             m_states[si].in_kill_zone ? "YES" : "NO",
             RegimeToString(regime.regime),
