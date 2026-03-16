@@ -100,10 +100,19 @@ private:
    int m_diag_safety_blocked;
    int m_diag_risk_blocked;
 
+   //--- Cumulative diagnostics (for periodic logging)
+   int m_total_bars_processed;
+   int m_total_zone_hits;
+   int m_total_reversals;
+   int m_total_passed;
+   int m_total_trades;
+
 public:
    COrchestrator() : m_symbol_count(0), m_bars_to_load(500), m_last_day(-1),
                      m_require_sweep_trap(false), m_allow_grade_d(false), m_long_only(false),
-                     m_require_fvg(false), m_require_ob(false), m_require_liq_conf(false)
+                     m_require_fvg(false), m_require_ob(false), m_require_liq_conf(false),
+                     m_total_bars_processed(0), m_total_zone_hits(0),
+                     m_total_reversals(0), m_total_passed(0), m_total_trades(0)
    {
       m_timeframes[0] = PERIOD_MN1;
       m_timeframes[1] = PERIOD_W1;
@@ -212,6 +221,16 @@ private:
       m_last_bar_time[sym_idx] = current_bar_time[0];
 
       int si = sym_idx;  // index into m_states[]
+      m_total_bars_processed++;
+
+      // Periodic diagnostic log every 200 bars (always on, regardless of log level)
+      if(m_total_bars_processed % 200 == 0)
+      {
+         Print(StringFormat("[DIAG] %s Bars=%d ZoneHits=%d Revs=%d Passed=%d Trades=%d | POIs=%d LIQ=%d",
+            symbol, m_total_bars_processed, m_total_zone_hits, m_total_reversals,
+            m_total_passed, m_total_trades,
+            m_states[si].active_poi_count, m_states[si].active_liq_count));
+      }
 
       // ================================================================
       // STEP 1: Sync MT5 data
@@ -697,6 +716,12 @@ private:
          double last_high  = m5_highs[m5_count - 1];
          double last_low   = m5_lows[m5_count - 1];
 
+         // Also check previous completed bar (critical for "Open prices only" mode
+         // where bar 0 has O=H=L=C=open price, missing intra-bar range)
+         double prev_high = (m5_count >= 2) ? m5_highs[m5_count - 2] : last_high;
+         double prev_low  = (m5_count >= 2) ? m5_lows[m5_count - 2]  : last_low;
+         double prev_close= (m5_count >= 2) ? m5_closes[m5_count - 2] : last_close;
+
          // STEP 11a: Check zone invalidation (Pepperstone 5M rule)
          if(m_states[si].active_pois[p].wick_probe_pending)
          {
@@ -718,10 +743,13 @@ private:
             m_states[si].active_pois[p].wick_probe_pending = false;
          }
 
-         // Check if price is in the zone
+         // Check if price is in the zone (current bar + previous completed bar)
          bool price_in_zone = m_states[si].active_pois[p].ContainsPrice(last_close) ||
                               m_states[si].active_pois[p].ContainsPrice(last_low) ||
-                              m_states[si].active_pois[p].ContainsPrice(last_high);
+                              m_states[si].active_pois[p].ContainsPrice(last_high) ||
+                              m_states[si].active_pois[p].ContainsPrice(prev_high) ||
+                              m_states[si].active_pois[p].ContainsPrice(prev_low) ||
+                              m_states[si].active_pois[p].ContainsPrice(prev_close);
 
          if(!price_in_zone) continue;
 
@@ -823,7 +851,7 @@ private:
          bool look_for_bullish = (m_states[si].active_pois[p].direction == POI_BULLISH);
          ReversalData rev;
          rev.Init();
-         for(int rb = 2; rb <= 4 && rb < m5_count; rb++)
+         for(int rb = 2; rb <= 6 && rb < m5_count; rb++)
          {
             ReversalData candidate;
             m_reversal.DetectAt(m5_opens, m5_highs, m5_lows, m5_closes, m5_times,
@@ -841,7 +869,8 @@ private:
 
          // Diagnostic tracking
          m_diag_price_in_zone++;
-         if(has_reversal) m_diag_has_reversal++;
+         m_total_zone_hits++;
+         if(has_reversal) { m_diag_has_reversal++; m_total_reversals++; }
          if(has_sweep_or_trap) m_diag_has_sweep_trap++;
 
          // Minimum requirements gate
@@ -861,6 +890,7 @@ private:
          }
 
          m_diag_meets_minimum++;
+         m_total_passed++;
 
          // If no sweep/trap, reduce the signal score slightly
          if(!has_sweep_or_trap)
@@ -1017,6 +1047,7 @@ private:
             }
 
             m_risk_state.total_trades_today++;
+            m_total_trades++;
 
             LogSignal(symbol, GradeToString(signal.grade),
                       signal.total_score,

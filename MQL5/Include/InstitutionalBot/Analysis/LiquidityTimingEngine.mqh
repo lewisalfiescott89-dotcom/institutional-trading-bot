@@ -71,14 +71,17 @@ public:
       result.quality = MathMin(result.quality, 1.0);
 
       // Determine if trade is allowed
-      // A+ and A setups allowed anytime (high score > 7)
-      if(setup_grade_score >= 7.0)
+      // NOTE: setup_grade_score is a WEIGHTED score (typical range 1-5, max ~9).
+      // Thresholds are calibrated for this weighted scale.
+      //
+      // High-quality setups (score >= 3.5) allowed anytime
+      if(setup_grade_score >= 3.5)
       {
          result.allow_trade = true;
          result.reason = "High-grade setup allowed anytime";
       }
-      // B setups allowed in any active session including Asian (score 5-7)
-      else if(setup_grade_score >= 5.0)
+      // Mid setups (score >= 2.0) allowed in any active session
+      else if(setup_grade_score >= 2.0)
       {
          if(session.in_kill_zone || session.current_session == SESSION_LONDON ||
             session.current_session == SESSION_NEW_YORK || session.current_session == SESSION_OVERLAP ||
@@ -93,8 +96,8 @@ public:
             result.reason = "Mid-grade setup outside active session";
          }
       }
-      // C setups in any active session including Asian (score 3-5)
-      else if(setup_grade_score >= 3.0)
+      // Low setups (score >= 1.0) allowed in any active session
+      else if(setup_grade_score >= 1.0)
       {
          if(session.in_kill_zone || session.current_session == SESSION_LONDON ||
             session.current_session == SESSION_NEW_YORK || session.current_session == SESSION_OVERLAP ||
@@ -109,8 +112,8 @@ public:
             result.reason = "Low-grade setup outside active session";
          }
       }
-      // D setups: allow in kill zones only
-      else if(setup_grade_score >= 2.0)
+      // Minimal setups (score >= 0.5): kill zones only
+      else if(setup_grade_score >= 0.5)
       {
          if(session.in_kill_zone)
          {
