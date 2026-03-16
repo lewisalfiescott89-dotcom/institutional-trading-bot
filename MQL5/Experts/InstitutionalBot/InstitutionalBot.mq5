@@ -89,7 +89,7 @@ input double   InpDefaultSLPips    = 30.0;      // Default SL (pips)
 
 input group "=== Safety Settings ==="
 input double   InpMaxSpread        = 5.0;       // Max spread (pips)
-input double   InpMaxVolATR        = 100.0;     // Max volatility ATR (pips)
+input double   InpMaxVolATR        = 500.0;     // Max volatility ATR (pips)
 
 input group "=== Commission (Pepperstone Raw) ==="
 input double   InpForexComm        = 7.0;       // Forex commission $/lot

@@ -323,7 +323,7 @@ struct SafetySettings
    void Init()
    {
       max_spread_pips          = 5.0;
-      max_volatility_atr_pips  = 100.0;
+      max_volatility_atr_pips  = 500.0;
       max_daily_drawdown_pct   = 5.0;
       max_consecutive_losses   = 5;
       emergency_pause          = false;
