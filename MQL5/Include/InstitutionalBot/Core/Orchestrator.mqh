@@ -559,6 +559,16 @@ private:
          if(has_nearest_liq)
             tp_price = m_sizer.TPFromLiquidity(entry_price, nearest_liq.price, is_buy);
 
+         // Guarantee a TP exists — use 2:1 R:R if no liquidity target found
+         if(tp_price == 0)
+         {
+            double sl_dist = MathAbs(entry_price - sl_price);
+            if(is_buy)
+               tp_price = entry_price + sl_dist * 2.0;
+            else
+               tp_price = entry_price - sl_dist * 2.0;
+         }
+
          // Position size
          SizeResult size;
          m_sizer.Calculate(symbol, AccountInfoDouble(ACCOUNT_EQUITY),

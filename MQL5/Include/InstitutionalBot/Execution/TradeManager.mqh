@@ -86,6 +86,9 @@ public:
          }
       }
 
+      // Breakeven: move SL to entry when trade reaches 1R profit
+      MoveToBreakeven(trade, current_price);
+
       // Update floating PnL
       UpdateFloatingPnL(trade, current_price);
    }
@@ -158,6 +161,42 @@ public:
    }
 
 private:
+   //--- Move SL to breakeven when trade reaches 1R profit
+   void MoveToBreakeven(TradeData &trade, double current_price)
+   {
+      if(trade.sl_price <= 0 || trade.entry_price <= 0) return;
+
+      double risk_dist = trade.RiskDistance();
+      if(risk_dist <= 0) return;
+
+      if(trade.direction == TRADE_BUY)
+      {
+         // Already at or past breakeven?
+         if(trade.sl_price >= trade.entry_price) return;
+         // Price moved 1R in our favor?
+         if(current_price >= trade.entry_price + risk_dist)
+         {
+            trade.sl_price = trade.entry_price;
+            LogMessage(LOG_INFO, "TRADEMGR",
+               StringFormat("%s BUY #%d SL moved to breakeven @ %.5f",
+                  trade.symbol, trade.id, trade.entry_price));
+         }
+      }
+      else // SELL
+      {
+         // Already at or past breakeven?
+         if(trade.sl_price <= trade.entry_price) return;
+         // Price moved 1R in our favor?
+         if(current_price <= trade.entry_price - risk_dist)
+         {
+            trade.sl_price = trade.entry_price;
+            LogMessage(LOG_INFO, "TRADEMGR",
+               StringFormat("%s SELL #%d SL moved to breakeven @ %.5f",
+                  trade.symbol, trade.id, trade.entry_price));
+         }
+      }
+   }
+
    void UpdateFloatingPnL(TradeData &trade, double current_price)
    {
       SymbolSpec spec = GetSymbolSpec(trade.symbol);

@@ -77,11 +77,12 @@ public:
          result.allow_trade = true;
          result.reason = "High-grade setup allowed anytime";
       }
-      // B setups allowed in kill zones or active sessions (score 5-7)
+      // B setups allowed in any active session including Asian (score 5-7)
       else if(setup_grade_score >= 5.0)
       {
          if(session.in_kill_zone || session.current_session == SESSION_LONDON ||
-            session.current_session == SESSION_NEW_YORK || session.current_session == SESSION_OVERLAP)
+            session.current_session == SESSION_NEW_YORK || session.current_session == SESSION_OVERLAP ||
+            session.current_session == SESSION_ASIAN)
          {
             result.allow_trade = true;
             result.reason = "Mid-grade setup in active session";
@@ -92,11 +93,12 @@ public:
             result.reason = "Mid-grade setup outside active session";
          }
       }
-      // C setups in kill zones or active sessions (score 3-5)
+      // C setups in any active session including Asian (score 3-5)
       else if(setup_grade_score >= 3.0)
       {
          if(session.in_kill_zone || session.current_session == SESSION_LONDON ||
-            session.current_session == SESSION_NEW_YORK || session.current_session == SESSION_OVERLAP)
+            session.current_session == SESSION_NEW_YORK || session.current_session == SESSION_OVERLAP ||
+            session.current_session == SESSION_ASIAN)
          {
             result.allow_trade = true;
             result.reason = "Low-grade setup in active session";
