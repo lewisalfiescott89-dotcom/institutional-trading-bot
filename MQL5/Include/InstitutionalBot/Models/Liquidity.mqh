@@ -89,6 +89,14 @@ struct LiquidityForecast
       below_count   = 0;
       draw_is_above = false;
       confidence    = 0;
+      primary_target.price = 0;
+      primary_target.strength = 0;
+      primary_target.distance = 0;
+      primary_target.priority = 0;
+      secondary_target.price = 0;
+      secondary_target.strength = 0;
+      secondary_target.distance = 0;
+      secondary_target.priority = 0;
    }
 };
 

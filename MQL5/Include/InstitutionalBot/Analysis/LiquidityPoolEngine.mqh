@@ -132,13 +132,13 @@ public:
 
             if(voids_out[count].is_bullish)
             {
-               voids_out[count].zone_low  = lows[i];
-               voids_out[count].zone_high = opens[i]; // Body low area
+               voids_out[count].zone_low  = opens[i];  // Body low for bullish
+               voids_out[count].zone_high = closes[i]; // Body high for bullish
             }
             else
             {
-               voids_out[count].zone_low  = opens[i]; // Body high area
-               voids_out[count].zone_high = highs[i];
+               voids_out[count].zone_low  = closes[i]; // Body low for bearish
+               voids_out[count].zone_high = opens[i];  // Body high for bearish
             }
             count++;
          }

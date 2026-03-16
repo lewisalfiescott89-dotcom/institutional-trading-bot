@@ -718,7 +718,7 @@ private:
                pool_types_with_multi_tf++;
          }
 
-         m_states[si].active_pois[p].liq_pool_type_count = total_nearby_pools;
+         m_states[si].active_pois[p].liq_pool_type_count = pool_types_with_multi_tf > 0 ? pool_types_with_multi_tf : (total_nearby_pools > 0 ? 1 : 0);
          if(pool_types_with_multi_tf > 0)
          {
             m_states[si].active_pois[p].AddConfluence("multi_tf_liq_x" + IntegerToString(pool_types_with_multi_tf));
