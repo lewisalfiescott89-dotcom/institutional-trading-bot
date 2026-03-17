@@ -61,7 +61,7 @@ input group "=== Reversal Settings ==="
 input double   InpEngulfingRatio   = 1.0;       // Engulfing body ratio
 input double   InpPinBarWickRatio  = 0.6;       // Pin bar wick ratio
 input double   InpDispBodyRatio    = 0.7;       // Displacement body ratio
-input double   InpMinRevQuality    = 2.0;       // Min reversal quality
+input double   InpMinRevQuality    = 1.5;       // Min reversal quality (lower = more sensitive)
 
 input group "=== Session Settings (UTC hours) ==="
 input int      InpAsianStart       = 0;         // Asian session start
@@ -91,7 +91,7 @@ input double   InpPartialClosePct  = 50.0;      // Partial close % (50 = close 5
 
 input group "=== Trade Frequency Controls ==="
 input int      InpMaxTradesPerDay  = 5;         // Max trades per day (all symbols)
-input int      InpCooldownBars     = 12;        // Min M5 bars between trades (12=1hr)
+input int      InpCooldownBars     = 6;         // Min M5 bars between trades (6=30min)
 input int      InpHTFMode          = 0;          // HTF trend mode: 0=off, 1=reduce lot 50%, 2=block counter-trend
 input bool     InpRequireKZ        = false;      // Only trade during kill zones
 
