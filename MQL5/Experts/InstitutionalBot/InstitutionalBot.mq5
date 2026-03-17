@@ -246,7 +246,7 @@ int OnInit()
    orchestrator.SetRequireLiqConf(InpRequireLiqConf);
    orchestrator.SetMaxTradesPerDay(InpMaxTradesPerDay);
    orchestrator.SetMinBarsBetweenTrades(InpCooldownBars);
-   orchestrator.SetRequireHTFAlignment(InpRequireHTF);
+   orchestrator.SetHTFMode(InpRequireHTF ? 2 : 0);  // 0=off, 2=block counter-trend
    orchestrator.SetRequireKillZone(InpRequireKZ);
    orchestrator.SetUseMSS(InpUseMSS);
    if(InpFilterLowTFPOIs)
