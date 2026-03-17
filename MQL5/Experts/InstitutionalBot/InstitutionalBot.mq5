@@ -85,13 +85,13 @@ input double   InpBRisk            = 0.5;       // B risk %
 input double   InpCRisk            = 0.25;      // C risk %
 input double   InpMaxDailyDD       = 5.0;       // Max daily drawdown %
 input int      InpMaxConsecLosses  = 5;         // Max consecutive losses
-input double   InpDefaultSLPips    = 30.0;      // Default SL (pips)
+input double   InpDefaultSLPips    = 300.0;     // Default SL (pips) — 300×0.1=$30 for gold
 input double   InpPartialTPPips    = 0;          // Partial TP distance: 0=auto (1:1 R:R), or fixed pips
 input double   InpPartialClosePct  = 50.0;      // Partial close % (50 = close 50% at partial TP)
 
 input group "=== Trade Frequency Controls ==="
 input int      InpMaxTradesPerDay  = 5;         // Max trades per day (all symbols)
-input int      InpCooldownBars     = 12;        // Min M5 bars between trades (12=1hr)
+input int      InpCooldownBars     = 4;         // Min M5 bars between trades (4=20min)
 input bool     InpRequireHTF       = false;      // Require D1 trend alignment (false=allow counter-trend trades)
 input bool     InpRequireKZ        = false;      // Only trade during kill zones
 

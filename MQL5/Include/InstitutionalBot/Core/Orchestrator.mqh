@@ -1293,15 +1293,15 @@ private:
          else
             poi_sl = m_states[si].active_pois[p].zone_high + sl_buffer;
 
-         // Use POI-based SL if it's tighter (closer to entry) than default
+         // Use WIDER SL — institutional SL goes BEYOND the zone, not tight to it
          double sl_price;
          if(is_buy)
-            sl_price = MathMax(poi_sl, default_sl);  // Higher = tighter for buys
+            sl_price = MathMin(poi_sl, default_sl);  // Lower = wider for buys (more room)
          else
-            sl_price = MathMin(poi_sl, default_sl);  // Lower = tighter for sells
+            sl_price = MathMax(poi_sl, default_sl);  // Higher = wider for sells (more room)
 
-         // Safety: ensure SL is at least 20 pips from entry (gold needs room)
-         double min_sl_dist = 20.0 * spec_sl.pip_size;
+         // Safety: ensure SL is at least 150 pips from entry (gold needs room — 150×0.1=$15)
+         double min_sl_dist = 150.0 * spec_sl.pip_size;
          if(MathAbs(entry_price - sl_price) < min_sl_dist)
             sl_price = default_sl;  // Fall back to default if POI SL too tight
 

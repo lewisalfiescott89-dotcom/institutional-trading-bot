@@ -363,7 +363,7 @@ SymbolSpec GetSymbolSpec(string symbol)
       spec.asset_class    = ASSET_COMMODITY;
       spec.pip_size       = 0.1;
       spec.contract_size  = 100.0;
-      spec.default_sl_pips= 30.0;
+      spec.default_sl_pips= 300.0;   // 300 pips × 0.1 = $30 SL (gold needs wide SL)
       spec.max_spread_pips= 5.0;
    }
    else if(symbol == "GBPUSD" || symbol == "EURUSD")
