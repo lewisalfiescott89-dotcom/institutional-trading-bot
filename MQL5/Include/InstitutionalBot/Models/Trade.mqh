@@ -45,6 +45,8 @@ struct TradeData
    string               signal_id;
    bool                 partial_taken;
    double               original_lot_size;
+   double               partial_pnl;        // Realized PnL from partial close
+   double               partial_commission;  // Commission from partial close
 
    void Init()
    {
@@ -75,6 +77,8 @@ struct TradeData
       signal_id     = "";
       partial_taken = false;
       original_lot_size = 0;
+      partial_pnl = 0;
+      partial_commission = 0;
    }
 
    double RiskDistance()         { return MathAbs(entry_price - sl_price); }

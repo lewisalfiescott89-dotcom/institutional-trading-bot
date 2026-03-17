@@ -155,8 +155,12 @@ public:
 
       trade.gross_pnl = pip_diff * pip_value * trade.lot_size;
 
+      // Add realized profit from partial close (if any)
+      trade.gross_pnl += trade.partial_pnl;
+
       // Commission
       trade.commission = m_commission.Calculate(trade.symbol, trade.lot_size, trade.entry_price);
+      trade.commission += trade.partial_commission;
 
       // Net PnL
       trade.net_pnl = trade.gross_pnl - trade.commission;
@@ -266,6 +270,25 @@ private:
 
       if(success)
       {
+         // Record realized PnL from the partial close
+         SymbolSpec spec_partial = GetSymbolSpec(trade.symbol);
+         double partial_pip_diff = 0;
+         if(trade.direction == TRADE_BUY)
+            partial_pip_diff = (current_price - trade.entry_price) / spec_partial.pip_size;
+         else
+            partial_pip_diff = (trade.entry_price - current_price) / spec_partial.pip_size;
+
+         double tick_sz  = SymbolInfoDouble(trade.symbol, SYMBOL_TRADE_TICK_SIZE);
+         double tick_val = SymbolInfoDouble(trade.symbol, SYMBOL_TRADE_TICK_VALUE);
+         double pip_val  = 0;
+         if(tick_sz > 0 && tick_val > 0)
+            pip_val = (spec_partial.pip_size / tick_sz) * tick_val;
+         else
+            pip_val = spec_partial.contract_size * spec_partial.pip_size;
+
+         trade.partial_pnl        = partial_pip_diff * pip_val * close_lots;
+         trade.partial_commission = m_commission.Calculate(trade.symbol, close_lots, trade.entry_price);
+
          trade.lot_size = remaining;
          trade.partial_taken = true;
 
