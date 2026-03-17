@@ -80,8 +80,36 @@ public:
          if(!PositionSelectByTicket(trade.ticket))
          {
             // Position was closed by MT5 (SL/TP hit or manual close)
-            // Use current price as approximate close price
-            CloseTrade(trade, current_price, "MT5 Closed");
+            // Look up actual close price from deal history instead of using current price
+            double actual_close = current_price;  // fallback
+            string close_reason = "MT5 Closed";
+
+            if(HistorySelectByPosition(trade.ticket))
+            {
+               int total_deals = HistoryDealsTotal();
+               for(int d = total_deals - 1; d >= 0; d--)
+               {
+                  ulong deal_ticket = HistoryDealGetTicket(d);
+                  if(deal_ticket > 0)
+                  {
+                     long deal_entry = HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+                     if(deal_entry == DEAL_ENTRY_OUT || deal_entry == DEAL_ENTRY_OUT_BY)
+                     {
+                        actual_close = HistoryDealGetDouble(deal_ticket, DEAL_PRICE);
+                        long deal_reason = HistoryDealGetInteger(deal_ticket, DEAL_REASON);
+                        if(deal_reason == DEAL_REASON_SL)
+                           close_reason = "SL Hit";
+                        else if(deal_reason == DEAL_REASON_TP)
+                           close_reason = "TP Hit";
+                        else if(deal_reason == DEAL_REASON_SO)
+                           close_reason = "Stop Out";
+                        break;
+                     }
+                  }
+               }
+            }
+
+            CloseTrade(trade, actual_close, close_reason);
             return;
          }
       }
