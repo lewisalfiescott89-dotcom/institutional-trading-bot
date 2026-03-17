@@ -102,17 +102,29 @@ public:
                            (time_mins >= ny_kz_start && time_mins < ny_kz_end);
    }
 
-   //--- Track session highs and lows
+   //--- Track session highs and lows (today's bars only)
    void TrackSessionLevels(const double &highs[], const double &lows[],
                            const datetime &times[], int bar_count,
                            SessionState &state)
    {
       if(bar_count == 0) return;
 
+      // Only accumulate bars from today
+      MqlDateTime today_dt;
+      TimeToStruct(TimeCurrent(), today_dt);
+      int today_day  = today_dt.day;
+      int today_mon  = today_dt.mon;
+      int today_year = today_dt.year;
+
       MqlDateTime dt;
       for(int i = 0; i < bar_count; i++)
       {
          TimeToStruct(times[i], dt);
+
+         // Skip bars not from today
+         if(dt.day != today_day || dt.mon != today_mon || dt.year != today_year)
+            continue;
+
          int time_mins = dt.hour * 60 + dt.min;
 
          int asian_start = m_cfg.asian_start_hour * 60;
