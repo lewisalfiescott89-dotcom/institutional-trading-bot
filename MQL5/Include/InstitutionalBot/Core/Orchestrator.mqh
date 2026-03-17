@@ -308,9 +308,33 @@ private:
       // ================================================================
       // STEP 3: Update higher timeframe analysis + detect POIs + FVGs
       // ================================================================
+      // CRITICAL: Carry forward existing POIs to preserve lifecycle state
+      // (wick_probe_pending, touches, freshness, invalidated).
+      // Matches Python version: all_pois = list(ss.active_pois)
       POIData all_pois[];
       int total_pois = 0;
       ArrayResize(all_pois, MAX_POIS);
+
+      // Copy existing POIs first (preserves wick_probe, touches, invalidation)
+      for(int ep = 0; ep < m_states[si].active_poi_count; ep++)
+      {
+         if(total_pois >= MAX_POIS) break;
+         all_pois[total_pois] = m_states[si].active_pois[ep];
+         // Reset per-bar confluence flags (will be recomputed below in Step 11)
+         all_pois[total_pois].has_fvg_confluence  = false;
+         all_pois[total_pois].fvg_tf_count        = 0;
+         all_pois[total_pois].is_flip_level       = false;
+         all_pois[total_pois].has_ob_confluence    = false;
+         all_pois[total_pois].has_bb_confluence    = false;
+         all_pois[total_pois].liq_pool_type_count  = 0;
+         all_pois[total_pois].has_void_confluence  = false;
+         all_pois[total_pois].has_stop_run         = false;
+         all_pois[total_pois].confluence_count     = 0;
+         // Reset score so it's freshly computed from confluence each bar
+         // (lifecycle state like touches/freshness is preserved)
+         all_pois[total_pois].score                = 0;
+         total_pois++;
+      }
 
       // Multi-TF collection: FVGs, Order Blocks, Breaker Blocks, Liquidity Pools
       int total_fvgs = 0;
@@ -340,11 +364,26 @@ private:
                                          tf_times, tf_count, symbol,
                                          m_timeframes[tf], tf_pois, 50);
 
-         // Add to master POI list
+         // Add to master POI list (skip duplicates already carried forward)
          for(int p = 0; p < poi_count && total_pois < MAX_POIS; p++)
          {
-            all_pois[total_pois] = tf_pois[p];
-            total_pois++;
+            // Check if this POI already exists (by zone boundaries + direction)
+            bool already_exists = false;
+            for(int ex = 0; ex < total_pois; ex++)
+            {
+               if(all_pois[ex].direction == tf_pois[p].direction &&
+                  MathAbs(all_pois[ex].zone_low  - tf_pois[p].zone_low)  < 1e-8 &&
+                  MathAbs(all_pois[ex].zone_high - tf_pois[p].zone_high) < 1e-8)
+               {
+                  already_exists = true;
+                  break;
+               }
+            }
+            if(!already_exists)
+            {
+               all_pois[total_pois] = tf_pois[p];
+               total_pois++;
+            }
          }
 
          // Detect FVGs on this timeframe (multi-TF FVG detection)
