@@ -86,7 +86,7 @@ input double   InpCRisk            = 0.25;      // C risk %
 input double   InpMaxDailyDD       = 5.0;       // Max daily drawdown %
 input int      InpMaxConsecLosses  = 5;         // Max consecutive losses
 input double   InpDefaultSLPips    = 30.0;      // Default SL (pips)
-input double   InpPartialTPPips    = 65.0;      // Partial TP distance (pips) - take profit at this level
+input double   InpPartialTPPips    = 0;          // Partial TP distance: 0=auto (1:1 R:R), or fixed pips
 input double   InpPartialClosePct  = 50.0;      // Partial close % (50 = close 50% at partial TP)
 
 input group "=== Trade Frequency Controls ==="

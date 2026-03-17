@@ -231,18 +231,34 @@ public:
    }
 
 private:
-   //--- Partial take-profit: close a portion of the position at a fixed pip distance
-   //--- Remaining position runs to the full TP
+   //--- Partial take-profit: close a portion at 1:1 R:R (or fixed pip distance)
+   //--- When m_partial_tp_pips == 0: use 1R (SL distance) as partial TP distance
+   //--- When m_partial_tp_pips > 0: use fixed pip distance (legacy mode)
+   //--- Remaining position runs to the full TP with trailing stop
    void TakePartialProfit(TradeData &trade, double current_price)
    {
       // Skip if already taken partial or partial TP disabled
       if(trade.partial_taken) return;
-      if(m_partial_tp_pips <= 0 || m_partial_close_pct <= 0) return;
+      if(m_partial_close_pct <= 0) return;
       if(trade.entry_price <= 0) return;
 
       // Get pip size for this symbol
       SymbolSpec spec = GetSymbolSpec(trade.symbol);
-      double partial_dist = m_partial_tp_pips * spec.pip_size;
+      double partial_dist = 0;
+
+      if(m_partial_tp_pips > 0)
+      {
+         // Legacy mode: fixed pip distance
+         partial_dist = m_partial_tp_pips * spec.pip_size;
+      }
+      else
+      {
+         // Smart mode: use 1:1 R:R (partial at 1R = SL distance)
+         double risk_dist = trade.OriginalRiskDistance();
+         if(risk_dist <= 0) risk_dist = trade.RiskDistance();
+         if(risk_dist <= 0) return;  // Can't calculate without SL
+         partial_dist = risk_dist;   // 1:1 R:R
+      }
 
       bool triggered = false;
       if(trade.direction == TRADE_BUY)
