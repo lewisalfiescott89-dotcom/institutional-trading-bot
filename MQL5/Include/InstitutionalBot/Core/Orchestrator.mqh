@@ -97,7 +97,7 @@ private:
    int  m_min_bars_between_trades;  // Minimum M5 bars between trades (cooldown)
    int  m_last_trade_bar[MAX_SYMBOLS]; // Per-symbol bar index of last trade
    int  m_symbol_bar_count[MAX_SYMBOLS]; // Per-symbol M5 bar counter (for cooldown)
-   bool m_require_htf_alignment;    // Require D1 trend alignment
+   int  m_htf_mode;                  // HTF trend mode: 0=off, 1=reduce size, 2=block
    bool m_require_kill_zone;        // Only trade during kill zones
    bool m_use_mss;                   // Use Market Structure Shift detection
    ENUM_TIMEFRAMES m_min_poi_tf;     // Minimum POI source timeframe (H1 default)
@@ -125,7 +125,7 @@ public:
                      m_require_sweep_trap(false), m_allow_grade_d(false), m_long_only(false),
                      m_require_fvg(false), m_require_ob(false), m_require_liq_conf(false),
                      m_max_trades_per_day(5), m_min_bars_between_trades(12),
-                     m_require_htf_alignment(true), m_require_kill_zone(false),
+                     m_htf_mode(0), m_require_kill_zone(false),
                      m_use_mss(true), m_min_poi_tf(PERIOD_H1),
                      m_total_bars_processed(0), m_total_zone_hits(0),
                      m_total_reversals(0), m_total_passed(0), m_total_trades(0)
@@ -184,7 +184,7 @@ public:
    void SetRequireLiqConf(bool require) { m_require_liq_conf = require; }
    void SetMaxTradesPerDay(int max_trades) { m_max_trades_per_day = max_trades; }
    void SetMinBarsBetweenTrades(int bars) { m_min_bars_between_trades = bars; }
-   void SetRequireHTFAlignment(bool require) { m_require_htf_alignment = require; }
+   void SetHTFMode(int mode) { m_htf_mode = mode; }  // 0=off, 1=reduce size, 2=block
    void SetRequireKillZone(bool require) { m_require_kill_zone = require; }
    void SetUseMSS(bool use) { m_use_mss = use; }
    void SetMinPOITimeframe(ENUM_TIMEFRAMES tf) { m_min_poi_tf = tf; }
@@ -1005,23 +1005,30 @@ private:
          }
 
          // STEP 12c: HTF trend alignment filter
-         //   Block counter-trend trades when D1 has a clear directional bias
-         if(m_require_htf_alignment)
+         //   Mode 0: off (allow all), Mode 1: reduce lot size 50%, Mode 2: block
+         bool is_counter_trend = false;
+         if(m_htf_mode > 0)
          {
-            bool counter_trend = false;
             if(m_htf_bias[sym_idx] == BIAS_BULLISH && m_states[si].active_pois[p].direction == POI_BEARISH)
-               counter_trend = true;
+               is_counter_trend = true;
             if(m_htf_bias[sym_idx] == BIAS_BEARISH && m_states[si].active_pois[p].direction == POI_BULLISH)
-               counter_trend = true;
-            if(counter_trend)
+               is_counter_trend = true;
+            if(is_counter_trend && m_htf_mode == 2)  // Hard block mode
             {
                m_diag_poi.RecordRejection(REJ_HTF_FILTER);
                m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_HTF_FILTER);
                LogMessage(LOG_INFO, "HTF_FILTER",
-                  StringFormat("%s POI#%d blocked: counter-trend vs D1 %s bias",
+                  StringFormat("%s POI#%d BLOCKED: counter-trend vs D1 %s bias",
                      symbol, m_states[si].active_pois[p].id,
                      m_htf_bias[sym_idx] == BIAS_BULLISH ? "BULLISH" : "BEARISH"));
                continue;
+            }
+            if(is_counter_trend && m_htf_mode == 1)  // Reduce mode — allow but halve lot size
+            {
+               LogMessage(LOG_INFO, "HTF_FILTER",
+                  StringFormat("%s POI#%d counter-trend vs D1 %s — lot size will be halved",
+                     symbol, m_states[si].active_pois[p].id,
+                     m_htf_bias[sym_idx] == BIAS_BULLISH ? "BULLISH" : "BEARISH"));
             }
          }
 
@@ -1279,6 +1286,15 @@ private:
                            risk_result.risk_pct, entry_price, sl_price, size);
 
          double raw_lots = size.lot_size;
+
+         // Counter-trend lot reduction (HTF mode 1): halve position size
+         if(is_counter_trend && m_htf_mode == 1)
+         {
+            size.lot_size *= 0.5;
+            LogMessage(LOG_INFO, "HTF_REDUCE",
+               StringFormat("%s counter-trend lot halved: %.2f -> %.2f",
+                  symbol, raw_lots, size.lot_size));
+         }
 
          // SAFETY LAYER 3: Hard cap at 1.0 lots max
          if(size.lot_size > 1.0)
