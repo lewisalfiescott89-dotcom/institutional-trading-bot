@@ -35,6 +35,7 @@
 #include "../Execution/SafetyEngine.mqh"
 #include "../Execution/TradeManager.mqh"
 #include "../Execution/Executor.mqh"
+#include "../Analysis/POIDiagnosticEngine.mqh"
 
 //--- Maximum symbols to track
 #define MAX_SYMBOLS 10
@@ -67,6 +68,7 @@ private:
    CSafetyEngine            m_safety;
    CTradeManager            m_trade_mgr;
    CExecutor                m_executor;
+   CPOIDiagnosticEngine     m_diag_poi;
 
    //--- State
    SymbolState     m_states[MAX_SYMBOLS];
@@ -97,6 +99,8 @@ private:
    int  m_symbol_bar_count[MAX_SYMBOLS]; // Per-symbol M5 bar counter (for cooldown)
    bool m_require_htf_alignment;    // Require D1 trend alignment
    bool m_require_kill_zone;        // Only trade during kill zones
+   bool m_use_mss;                   // Use Market Structure Shift detection
+   ENUM_TIMEFRAMES m_min_poi_tf;     // Minimum POI source timeframe (H1 default)
    ENUM_TREND_BIAS m_htf_bias[MAX_SYMBOLS]; // D1 trend bias per symbol
 
    //--- Diagnostic counters (reset each bar for logging)
@@ -122,6 +126,7 @@ public:
                      m_require_fvg(false), m_require_ob(false), m_require_liq_conf(false),
                      m_max_trades_per_day(5), m_min_bars_between_trades(12),
                      m_require_htf_alignment(true), m_require_kill_zone(false),
+                     m_use_mss(true), m_min_poi_tf(PERIOD_H1),
                      m_total_bars_processed(0), m_total_zone_hits(0),
                      m_total_reversals(0), m_total_passed(0), m_total_trades(0)
    {
@@ -181,6 +186,9 @@ public:
    void SetMinBarsBetweenTrades(int bars) { m_min_bars_between_trades = bars; }
    void SetRequireHTFAlignment(bool require) { m_require_htf_alignment = require; }
    void SetRequireKillZone(bool require) { m_require_kill_zone = require; }
+   void SetUseMSS(bool use) { m_use_mss = use; }
+   void SetMinPOITimeframe(ENUM_TIMEFRAMES tf) { m_min_poi_tf = tf; }
+   void SetDiagInterval(int bars) { m_diag_poi.SetSummaryInterval(bars); }
 
    //--- Configure all engines
    void Configure(const POISettings &poi_cfg, const FVGSettings &fvg_cfg,
@@ -798,6 +806,10 @@ private:
          }
       }
 
+      // Run diagnostic engine per bar (checks missed opportunities)
+      SymbolSpec diag_spec = GetSymbolSpec(symbol);
+      m_diag_poi.OnBar(symbol, bid, diag_spec.pip_size);
+
       // ================================================================
       // STEP 12-15: Check each active POI for trade signals
       // ================================================================
@@ -810,6 +822,11 @@ private:
 
          // Max 2 concurrent open positions per symbol
          if(m_states[si].open_trade_count >= 2) break;
+
+         // HTF POI filter: skip POIs from timeframes below m_min_poi_tf
+         // Focus on main institutional levels (H1+) instead of M5/M15 noise
+         if(m_states[si].active_pois[p].timeframe < m_min_poi_tf)
+            continue;
 
          double last_close = m5_closes[m5_count - 1];
          double last_open  = m5_opens[m5_count - 1];
@@ -883,6 +900,9 @@ private:
 
          if(!price_in_zone) continue;
 
+         // Record zone touch in diagnostic engine
+         m_diag_poi.RecordTouch(m_states[si].active_pois[p]);
+
          // Track wick probe for next bar evaluation
          if(m_states[si].active_pois[p].direction == POI_BEARISH && last_high > m_states[si].active_pois[p].zone_high && last_close <= m_states[si].active_pois[p].zone_high)
          {
@@ -944,11 +964,17 @@ private:
 
          // Long-only filter: skip bearish POIs if enabled
          if(m_long_only && m_states[si].active_pois[p].direction == POI_BEARISH)
+         {
+            m_diag_poi.RecordRejection(REJ_LONG_ONLY);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_LONG_ONLY);
             continue;
+         }
 
          // FVG confluence gate: if required, skip POIs without multi-TF FVG overlap
          if(m_require_fvg && !m_states[si].active_pois[p].has_fvg_confluence)
          {
+            m_diag_poi.RecordRejection(REJ_FVG_REQUIRED);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_FVG_REQUIRED);
             LogMessage(LOG_INFO, "FILTER",
                StringFormat("%s POI#%d no multi-TF FVG confluence - skipped",
                   symbol, m_states[si].active_pois[p].id));
@@ -958,6 +984,8 @@ private:
          // OB confluence gate: if required, skip POIs without order block overlap
          if(m_require_ob && !m_states[si].active_pois[p].has_ob_confluence)
          {
+            m_diag_poi.RecordRejection(REJ_OB_REQUIRED);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_OB_REQUIRED);
             LogMessage(LOG_INFO, "FILTER",
                StringFormat("%s POI#%d no OB confluence - skipped",
                   symbol, m_states[si].active_pois[p].id));
@@ -967,6 +995,8 @@ private:
          // Liquidity pool confluence gate: require at least 2 pool types overlapping
          if(m_require_liq_conf && m_states[si].active_pois[p].liq_pool_type_count < 2)
          {
+            m_diag_poi.RecordRejection(REJ_LIQ_CONF_REQUIRED);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_LIQ_CONF_REQUIRED);
             LogMessage(LOG_INFO, "FILTER",
                StringFormat("%s POI#%d insufficient liq pool confluence (%d types) - skipped",
                   symbol, m_states[si].active_pois[p].id,
@@ -985,6 +1015,8 @@ private:
                counter_trend = true;
             if(counter_trend)
             {
+               m_diag_poi.RecordRejection(REJ_HTF_FILTER);
+               m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_HTF_FILTER);
                LogMessage(LOG_INFO, "HTF_FILTER",
                   StringFormat("%s POI#%d blocked: counter-trend vs D1 %s bias",
                      symbol, m_states[si].active_pois[p].id,
@@ -996,6 +1028,8 @@ private:
          // STEP 12d: Kill zone filter
          if(m_require_kill_zone && !m_states[si].in_kill_zone)
          {
+            m_diag_poi.RecordRejection(REJ_KILL_ZONE);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_KILL_ZONE);
             LogMessage(LOG_INFO, "KZ_FILTER",
                StringFormat("%s POI#%d blocked: not in kill zone", symbol, m_states[si].active_pois[p].id));
             continue;
@@ -1004,6 +1038,7 @@ private:
          // STEP 12e: Cooldown between trades
          if((m_symbol_bar_count[sym_idx] - m_last_trade_bar[sym_idx]) < m_min_bars_between_trades)
          {
+            m_diag_poi.RecordRejection(REJ_COOLDOWN);
             continue;  // Still in cooldown period
          }
 
@@ -1036,16 +1071,30 @@ private:
          if(has_reversal) { m_diag_has_reversal++; m_total_reversals++; }
          if(has_sweep_or_trap) m_diag_has_sweep_trap++;
 
-         // Minimum requirements gate
-         if(!has_reversal)
+         // MSS detection: if enabled, check for market structure shift as
+         // an alternative/supplement to candle reversal patterns
+         bool has_mss = false;
+         if(m_use_mss && m5_count > 15)
          {
-            // No reversal = no trade regardless
+            has_mss = m_reversal.DetectMSS(m5_highs, m5_lows, m5_closes,
+                                            m5_count, look_for_bullish, 10);
+         }
+
+         // Minimum requirements gate
+         // Accept either classic reversal OR MSS (market structure shift)
+         if(!has_reversal && !has_mss)
+         {
+            // No reversal and no MSS = no trade
+            m_diag_poi.RecordRejection(REJ_NO_REVERSAL);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_NO_REVERSAL);
             continue;
          }
 
          if(m_require_sweep_trap && !has_sweep_or_trap)
          {
             // Strict mode: need sweep/trap too
+            m_diag_poi.RecordRejection(REJ_NO_SWEEP_TRAP);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_NO_SWEEP_TRAP);
             LogMessage(LOG_INFO, "FILTER",
                StringFormat("%s POI#%d reversal found but no sweep/trap (strict mode)",
                   symbol, m_states[si].active_pois[p].id));
@@ -1097,6 +1146,8 @@ private:
          if(!timing.allow_trade)
          {
             m_diag_timing_blocked++;
+            m_diag_poi.RecordRejection(REJ_TIMING_BLOCKED);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_TIMING_BLOCKED);
             LogMessage(LOG_INFO, "TIMING",
                StringFormat("%s POI#%d blocked: %s (score=%.1f)", symbol, m_states[si].active_pois[p].id, timing.reason, signal.total_score));
             continue;
@@ -1106,6 +1157,8 @@ private:
          if(signal.grade == GRADE_D && !m_allow_grade_d)
          {
             m_diag_grade_d++;
+            m_diag_poi.RecordRejection(REJ_GRADE_D);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_GRADE_D);
             LogMessage(LOG_INFO, "QUALITY",
                StringFormat("%s POI#%d grade D - skipped (score=%.1f)",
                   symbol, m_states[si].active_pois[p].id, signal.total_score));
@@ -1120,6 +1173,8 @@ private:
          if(!safety.passed)
          {
             m_diag_safety_blocked++;
+            m_diag_poi.RecordRejection(REJ_SAFETY_BLOCKED);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_SAFETY_BLOCKED);
             LogMessage(LOG_WARNING, "SAFETY",
                StringFormat("%s VETOED: %s", symbol, safety.veto_reason));
             continue;
@@ -1139,6 +1194,8 @@ private:
          if(!risk_result.allow_trade)
          {
             m_diag_risk_blocked++;
+            m_diag_poi.RecordRejection(REJ_RISK_BLOCKED);
+            m_diag_poi.RecordPendingOpportunity(m_states[si].active_pois[p], bid, TimeCurrent(), REJ_RISK_BLOCKED);
             LogMessage(LOG_INFO, "RISK",
                StringFormat("%s blocked: %s", symbol, risk_result.reason));
             continue;
@@ -1377,6 +1434,7 @@ private:
             m_risk_state.total_trades_today++;
             m_total_trades++;
             m_last_trade_bar[sym_idx] = m_symbol_bar_count[sym_idx];  // Cooldown tracking (per-symbol)
+            m_diag_poi.RecordTrade();
 
             LogSignal(symbol, GradeToString(signal.grade),
                       signal.total_score,

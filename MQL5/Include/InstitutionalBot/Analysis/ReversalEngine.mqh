@@ -177,6 +177,68 @@ public:
       }
    }
 
+   //--- Detect Market Structure Shift (MSS) on M5 timeframe
+   //    ICT methodology: after price sweeps into a POI zone, look for a
+   //    break of recent structure in the opposite direction.
+   //    Bullish MSS: price drops into zone (makes low), then closes above
+   //                 the most recent swing high before that low.
+   //    Bearish MSS: price rises into zone (makes high), then closes below
+   //                 the most recent swing low before that high.
+   bool DetectMSS(const double &highs[], const double &lows[],
+                  const double &closes[], int bar_count,
+                  bool look_for_bullish, int lookback = 10)
+   {
+      if(bar_count < lookback + 3) return false;
+
+      int end_bar   = bar_count - 2;  // Last completed bar
+      int start_bar = end_bar - lookback;
+      if(start_bar < 1) start_bar = 1;
+
+      if(look_for_bullish)
+      {
+         // Step 1: Find the lowest low in lookback (the manipulation/sweep into demand zone)
+         int low_bar = start_bar;
+         for(int i = start_bar + 1; i <= end_bar; i++)
+            if(lows[i] < lows[low_bar]) low_bar = i;
+
+         // Need bars before the low for structure, and at least 1 bar after for the shift
+         if(low_bar <= start_bar + 1 || low_bar >= end_bar) return false;
+
+         // Step 2: Find the highest high BEFORE the low bar (the structure to break)
+         double structure_high = highs[start_bar];
+         for(int i = start_bar + 1; i < low_bar; i++)
+            if(highs[i] > structure_high) structure_high = highs[i];
+
+         // Structure high must be meaningfully above the low
+         if(structure_high <= lows[low_bar]) return false;
+
+         // Step 3: Check if any bar AFTER the low closed above the structure high
+         for(int i = low_bar + 1; i <= end_bar; i++)
+            if(closes[i] > structure_high) return true;
+      }
+      else  // Bearish MSS
+      {
+         // Step 1: Find the highest high in lookback (the manipulation/sweep into supply zone)
+         int high_bar = start_bar;
+         for(int i = start_bar + 1; i <= end_bar; i++)
+            if(highs[i] > highs[high_bar]) high_bar = i;
+
+         if(high_bar <= start_bar + 1 || high_bar >= end_bar) return false;
+
+         // Step 2: Find the lowest low BEFORE the high bar
+         double structure_low = lows[start_bar];
+         for(int i = start_bar + 1; i < high_bar; i++)
+            if(lows[i] < structure_low) structure_low = lows[i];
+
+         if(structure_low >= highs[high_bar]) return false;
+
+         // Step 3: Check if any bar AFTER the high closed below the structure low
+         for(int i = high_bar + 1; i <= end_bar; i++)
+            if(closes[i] < structure_low) return true;
+      }
+      return false;
+   }
+
 private:
    double ScoreEngulfing(double body, double prev_body, double range)
    {

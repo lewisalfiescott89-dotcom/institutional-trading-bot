@@ -95,6 +95,11 @@ input int      InpCooldownBars     = 12;        // Min M5 bars between trades (1
 input bool     InpRequireHTF       = true;       // Require D1 trend alignment (block counter-trend)
 input bool     InpRequireKZ        = false;      // Only trade during kill zones
 
+input group "=== Diagnostic / ICT Enhancements ==="
+input bool     InpUseMSS           = true;       // Use Market Structure Shift detection (ICT method)
+input bool     InpFilterLowTFPOIs  = false;      // Skip M5/M15 POIs (focus on H1+ institutional levels)
+input int      InpDiagInterval     = 200;        // Diagnostic summary interval (bars)
+
 input group "=== Safety Settings ==="
 input double   InpMaxSpread        = 5.0;       // Max spread (pips)
 input double   InpMaxVolATR        = 500.0;     // Max volatility ATR (pips)
@@ -243,6 +248,12 @@ int OnInit()
    orchestrator.SetMinBarsBetweenTrades(InpCooldownBars);
    orchestrator.SetRequireHTFAlignment(InpRequireHTF);
    orchestrator.SetRequireKillZone(InpRequireKZ);
+   orchestrator.SetUseMSS(InpUseMSS);
+   if(InpFilterLowTFPOIs)
+      orchestrator.SetMinPOITimeframe(PERIOD_H1);
+   else
+      orchestrator.SetMinPOITimeframe(PERIOD_M5);
+   orchestrator.SetDiagInterval(InpDiagInterval);
 
    if(!orchestrator.Init(symbols, count, InpDryRun))
    {
