@@ -286,8 +286,8 @@ struct RiskSettings
       b_risk_pct              = 0.50;
       c_risk_pct              = 0.25;
       max_daily_drawdown_pct  = 5.0;
-      max_consecutive_losses  = 5;
-      default_sl_pips         = 30.0;
+      max_consecutive_losses  = 3;
+      default_sl_pips         = 500.0;  // 500 pips × 0.1 = $50 SL for gold
       partial_tp_pips         = 0;      // 0 = adaptive mode (auto-optimize R-multiple)
       partial_close_pct       = 0.50;   // Close 50% of position
    }
@@ -329,7 +329,7 @@ struct SafetySettings
       max_spread_pips          = 5.0;
       max_volatility_atr_pips  = 500.0;
       max_daily_drawdown_pct   = 5.0;
-      max_consecutive_losses   = 5;
+      max_consecutive_losses   = 3;
       emergency_pause          = false;
       abnormal_vol_filter      = true;
    }
@@ -363,7 +363,7 @@ SymbolSpec GetSymbolSpec(string symbol)
       spec.asset_class    = ASSET_COMMODITY;
       spec.pip_size       = 0.1;
       spec.contract_size  = 100.0;
-      spec.default_sl_pips= 300.0;   // 300 pips × 0.1 = $30 SL (gold needs wide SL)
+      spec.default_sl_pips= 500.0;   // 500 pips × 0.1 = $50 SL (gold needs wide SL)
       spec.max_spread_pips= 5.0;
    }
    else if(symbol == "GBPUSD" || symbol == "EURUSD")

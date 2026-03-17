@@ -84,8 +84,8 @@ input double   InpARisk            = 1.0;       // A risk %
 input double   InpBRisk            = 0.5;       // B risk %
 input double   InpCRisk            = 0.25;      // C risk %
 input double   InpMaxDailyDD       = 5.0;       // Max daily drawdown %
-input int      InpMaxConsecLosses  = 5;         // Max consecutive losses
-input double   InpDefaultSLPips    = 300.0;     // Default SL (pips) — 300×0.1=$30 for gold
+input int      InpMaxConsecLosses  = 3;         // Max consecutive losses (circuit breaker)
+input double   InpDefaultSLPips    = 500.0;     // Default SL (pips) — 500×0.1=$50 for gold
 input double   InpPartialTPPips    = 0;          // Partial TP distance: 0=auto (1:1 R:R), or fixed pips
 input double   InpPartialClosePct  = 50.0;      // Partial close % (50 = close 50% at partial TP)
 

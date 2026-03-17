@@ -1396,10 +1396,20 @@ private:
          else
             sl_price = MathMax(poi_sl, default_sl);  // Higher = wider for sells (more room)
 
-         // Safety: ensure SL is at least 150 pips from entry (gold needs room — 150×0.1=$15)
-         double min_sl_dist = 150.0 * spec_sl.pip_size;
+         // Safety: ensure SL is at least 500 pips from entry (gold needs room — 500×0.1=$50)
+         // This is the HARD FLOOR — no trade should have less than this SL distance
+         double min_sl_dist = 500.0 * spec_sl.pip_size;
          if(MathAbs(entry_price - sl_price) < min_sl_dist)
-            sl_price = default_sl;  // Fall back to default if POI SL too tight
+         {
+            // Force SL to minimum distance
+            if(is_buy)
+               sl_price = entry_price - min_sl_dist;
+            else
+               sl_price = entry_price + min_sl_dist;
+            LogMessage(LOG_INFO, "SL_FLOOR",
+               StringFormat("%s SL widened to min floor: %.5f (dist=%.1f pips)",
+                  symbol, sl_price, min_sl_dist / spec_sl.pip_size));
+         }
 
          double tp_price = 0;
          if(has_nearest_liq)
