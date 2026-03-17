@@ -600,8 +600,35 @@ private:
             m_states[si].active_pois[p].has_fvg_confluence = true;
             m_states[si].active_pois[p].fvg_tf_count = fvg_tf_hits;
             m_states[si].active_pois[p].AddConfluence("multi_tf_fvg_x" + IntegerToString(fvg_tf_hits));
-            // Also boost the POI score directly for FVG confluence
+            // Base score boost per TF
             m_states[si].active_pois[p].score += fvg_tf_hits * 2.0;
+
+            // HTF FVG PROJECTION BOOST: D1/H4 FVGs projected to M5 get extra weight
+            // These are the "tl acc fvg daily a plus" levels from TradingView
+            for(int hf = 0; hf < m_states[si].all_fvg_count; hf++)
+            {
+               if(m_states[si].all_fvgs[hf].fill_state == FVG_FULLY_FILLED) continue;
+               if(m_states[si].all_fvgs[hf].gap_low <= m_states[si].active_pois[p].zone_high &&
+                  m_states[si].active_pois[p].zone_low <= m_states[si].all_fvgs[hf].gap_high)
+               {
+                  ENUM_TIMEFRAMES fvg_tf = m_states[si].all_fvgs[hf].timeframe;
+                  if(fvg_tf == PERIOD_D1)
+                  {
+                     m_states[si].active_pois[p].score += 5.0;  // Daily FVG = major institutional level
+                     m_states[si].active_pois[p].AddConfluence("daily_fvg");
+                  }
+                  else if(fvg_tf == PERIOD_H4)
+                  {
+                     m_states[si].active_pois[p].score += 3.0;  // H4 FVG = strong level
+                     m_states[si].active_pois[p].AddConfluence("h4_fvg");
+                  }
+                  else if(fvg_tf == PERIOD_W1)
+                  {
+                     m_states[si].active_pois[p].score += 6.0;  // Weekly FVG = ultra-strong
+                     m_states[si].active_pois[p].AddConfluence("weekly_fvg");
+                  }
+               }
+            }
          }
       }
 
@@ -806,6 +833,55 @@ private:
                m_states[si].active_pois[p].score += 2.0;
                break;
             }
+         }
+      }
+
+      // 11d: Session high/low confluence — boost POIs near session levels
+      //      These are the "NEW YORK HIGH", "ASIAN HIGH" levels from TradingView
+      SymbolSpec spec_sess = GetSymbolSpec(symbol);
+      double sess_tol = 20.0 * spec_sess.pip_size;  // 20 pip tolerance
+      for(int p = 0; p < m_states[si].active_poi_count; p++)
+      {
+         if(!m_states[si].active_pois[p].active) continue;
+         double poi_lo = m_states[si].active_pois[p].zone_low;
+         double poi_hi = m_states[si].active_pois[p].zone_high;
+
+         // Check if POI is near any session high/low
+         if(m_states[si].session_state.asian_high > -DBL_MAX &&
+            MathAbs(poi_hi - m_states[si].session_state.asian_high) <= sess_tol)
+         {
+            m_states[si].active_pois[p].score += 3.0;
+            m_states[si].active_pois[p].AddConfluence("asian_high");
+         }
+         if(m_states[si].session_state.asian_low < DBL_MAX &&
+            MathAbs(poi_lo - m_states[si].session_state.asian_low) <= sess_tol)
+         {
+            m_states[si].active_pois[p].score += 3.0;
+            m_states[si].active_pois[p].AddConfluence("asian_low");
+         }
+         if(m_states[si].session_state.london_high > -DBL_MAX &&
+            MathAbs(poi_hi - m_states[si].session_state.london_high) <= sess_tol)
+         {
+            m_states[si].active_pois[p].score += 2.5;
+            m_states[si].active_pois[p].AddConfluence("london_high");
+         }
+         if(m_states[si].session_state.london_low < DBL_MAX &&
+            MathAbs(poi_lo - m_states[si].session_state.london_low) <= sess_tol)
+         {
+            m_states[si].active_pois[p].score += 2.5;
+            m_states[si].active_pois[p].AddConfluence("london_low");
+         }
+         if(m_states[si].session_state.ny_high > -DBL_MAX &&
+            MathAbs(poi_hi - m_states[si].session_state.ny_high) <= sess_tol)
+         {
+            m_states[si].active_pois[p].score += 2.5;
+            m_states[si].active_pois[p].AddConfluence("ny_high");
+         }
+         if(m_states[si].session_state.ny_low < DBL_MAX &&
+            MathAbs(poi_lo - m_states[si].session_state.ny_low) <= sess_tol)
+         {
+            m_states[si].active_pois[p].score += 2.5;
+            m_states[si].active_pois[p].AddConfluence("ny_low");
          }
       }
 
@@ -1133,6 +1209,26 @@ private:
                rev = candidate;
          }
 
+         // Check for double top/bottom confirmation (ICT pattern)
+         ReversalData dbl_rev;
+         bool has_double_pattern = m_reversal.DetectDoubleTopBottom(
+            m5_highs, m5_lows, m5_closes, m5_times, m5_count,
+            look_for_bullish,
+            m_states[si].active_pois[p].zone_low,
+            m_states[si].active_pois[p].zone_high,
+            20, dbl_rev);
+
+         // If double top/bottom found and it's better quality, use it
+         if(has_double_pattern && dbl_rev.quality > rev.quality)
+         {
+            rev = dbl_rev;
+            LogMessage(LOG_INFO, "DBL_PATTERN",
+               StringFormat("%s POI#%d %s confirmed at zone (quality=%.1f)",
+                  symbol, m_states[si].active_pois[p].id,
+                  look_for_bullish ? "DOUBLE_BOTTOM" : "DOUBLE_TOP",
+                  dbl_rev.quality));
+         }
+
          // Check reversal
          bool has_reversal = rev.valid;
          bool has_sweep_or_trap = has_sweep || has_trap;
@@ -1308,6 +1404,56 @@ private:
          double tp_price = 0;
          if(has_nearest_liq)
             tp_price = m_sizer.TPFromLiquidity(entry_price, nearest_liq.price, is_buy);
+
+         // SESSION LEVEL TP: Use Asian/London/NY highs/lows as TP targets
+         // These are key institutional liquidity levels (visible on TradingView)
+         double session_tp = 0;
+         if(is_buy)
+         {
+            // For buys, target session highs above entry
+            double candidates[3];
+            int cand_count = 0;
+            if(m_states[si].session_state.asian_high > entry_price && m_states[si].session_state.asian_high > -DBL_MAX)
+               candidates[cand_count++] = m_states[si].session_state.asian_high;
+            if(m_states[si].session_state.london_high > entry_price && m_states[si].session_state.london_high > -DBL_MAX)
+               candidates[cand_count++] = m_states[si].session_state.london_high;
+            if(m_states[si].session_state.ny_high > entry_price && m_states[si].session_state.ny_high > -DBL_MAX)
+               candidates[cand_count++] = m_states[si].session_state.ny_high;
+            // Pick nearest session high as TP
+            for(int sc = 0; sc < cand_count; sc++)
+               if(session_tp == 0 || candidates[sc] < session_tp)
+                  session_tp = candidates[sc];
+         }
+         else
+         {
+            // For sells, target session lows below entry
+            double candidates[3];
+            int cand_count = 0;
+            if(m_states[si].session_state.asian_low < entry_price && m_states[si].session_state.asian_low < DBL_MAX)
+               candidates[cand_count++] = m_states[si].session_state.asian_low;
+            if(m_states[si].session_state.london_low < entry_price && m_states[si].session_state.london_low < DBL_MAX)
+               candidates[cand_count++] = m_states[si].session_state.london_low;
+            if(m_states[si].session_state.ny_low < entry_price && m_states[si].session_state.ny_low < DBL_MAX)
+               candidates[cand_count++] = m_states[si].session_state.ny_low;
+            for(int sc = 0; sc < cand_count; sc++)
+               if(session_tp == 0 || candidates[sc] > session_tp)
+                  session_tp = candidates[sc];
+         }
+
+         // Use session level TP if it's better than liquidity TP
+         if(session_tp != 0)
+         {
+            double session_tp_dist = MathAbs(session_tp - entry_price);
+            double liq_tp_dist = (tp_price != 0) ? MathAbs(tp_price - entry_price) : 0;
+            // Use session TP if no liquidity TP or session TP is closer (more achievable)
+            if(tp_price == 0 || (session_tp_dist > 0 && session_tp_dist < liq_tp_dist))
+            {
+               tp_price = session_tp;
+               LogMessage(LOG_INFO, "SESSION_TP",
+                  StringFormat("%s using session level TP=%.5f (dist=%.1f pips)",
+                     symbol, session_tp, session_tp_dist / spec_sl.pip_size));
+            }
+         }
 
          // Guarantee a TP exists — use 3:1 R:R if no liquidity target found
          double sl_dist = MathAbs(entry_price - sl_price);
@@ -1519,6 +1665,42 @@ private:
             m_total_trades++;
             m_last_trade_bar[sym_idx] = m_symbol_bar_count[sym_idx];  // Cooldown tracking (per-symbol)
             m_diag_poi.RecordTrade();
+
+            // ZONE QUALITY LABEL: classify setup like TradingView indicator
+            // "STRONG SCALP SELL/BUY" = high confluence (score >= 30, multiple TF alignment)
+            // "monitor sell/buy" = decent zone but fewer confluences
+            string zone_label = "";
+            int conf_count = m_states[si].active_pois[p].confluence_count;
+            bool has_htf_fvg = false;
+            bool has_session_level = false;
+            bool has_dbl_pattern = (rev.type == REV_BEARISH_DOUBLE_TOP || rev.type == REV_BULLISH_DOUBLE_BOTTOM);
+            for(int cl = 0; cl < conf_count; cl++)
+            {
+               if(m_states[si].active_pois[p].confluences[cl] == "daily_fvg" ||
+                  m_states[si].active_pois[p].confluences[cl] == "h4_fvg" ||
+                  m_states[si].active_pois[p].confluences[cl] == "weekly_fvg")
+                  has_htf_fvg = true;
+               if(m_states[si].active_pois[p].confluences[cl] == "asian_high" ||
+                  m_states[si].active_pois[p].confluences[cl] == "asian_low" ||
+                  m_states[si].active_pois[p].confluences[cl] == "london_high" ||
+                  m_states[si].active_pois[p].confluences[cl] == "london_low" ||
+                  m_states[si].active_pois[p].confluences[cl] == "ny_high" ||
+                  m_states[si].active_pois[p].confluences[cl] == "ny_low")
+                  has_session_level = true;
+            }
+
+            if(signal.total_score >= 30.0 && (has_htf_fvg || has_dbl_pattern) && conf_count >= 3)
+               zone_label = "STRONG SCALP " + (is_buy ? "BUY" : "SELL");
+            else if(signal.total_score >= 20.0 && conf_count >= 2)
+               zone_label = "scalp " + (is_buy ? "buy" : "sell");
+            else
+               zone_label = "monitor " + (is_buy ? "buy" : "sell");
+
+            Print(StringFormat("[ZONE_QUALITY] %s | %s | Grade=%s Score=%.1f | Confluences=%d | HTF_FVG=%s SessionLvl=%s DblPattern=%s | Rev=%s",
+               symbol, zone_label, GradeToString(signal.grade), signal.total_score,
+               conf_count, has_htf_fvg ? "Y" : "N", has_session_level ? "Y" : "N",
+               has_dbl_pattern ? "Y" : "N",
+               m_reversal.ReversalTypeToString(rev.type)));
 
             LogSignal(symbol, GradeToString(signal.grade),
                       signal.total_score,

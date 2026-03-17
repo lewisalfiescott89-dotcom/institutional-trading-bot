@@ -18,6 +18,8 @@ enum ENUM_REVERSAL_TYPE
    REV_BEARISH_DISPLACEMENT,
    REV_BULLISH_RECLAIM,
    REV_BEARISH_RECLAIM,
+   REV_BULLISH_DOUBLE_BOTTOM,
+   REV_BEARISH_DOUBLE_TOP,
    REV_NONE
 };
 
@@ -173,8 +175,100 @@ public:
          case REV_BEARISH_DISPLACEMENT:  return "BearDisp";
          case REV_BULLISH_RECLAIM:       return "BullReclaim";
          case REV_BEARISH_RECLAIM:       return "BearReclaim";
+         case REV_BULLISH_DOUBLE_BOTTOM:  return "BullDblBot";
+         case REV_BEARISH_DOUBLE_TOP:     return "BearDblTop";
          default:                        return "None";
       }
+   }
+
+   //--- Detect double top/bottom pattern at a zone
+   //    ICT: price tests the same level twice, fails both times = strong reversal
+   //    look_for_bullish=true: detect double bottom (two lows at similar level)
+   //    look_for_bullish=false: detect double top (two highs at similar level)
+   bool DetectDoubleTopBottom(const double &highs[], const double &lows[],
+                              const double &closes[], const datetime &times[],
+                              int bar_count, bool look_for_bullish,
+                              double zone_low, double zone_high,
+                              int lookback, ReversalData &result)
+   {
+      result.Init();
+      if(bar_count < lookback + 2) return false;
+
+      int end_bar   = bar_count - 2;  // Last completed bar
+      int start_bar = end_bar - lookback;
+      if(start_bar < 1) start_bar = 1;
+
+      double tolerance = (zone_high - zone_low) * 0.5;  // Half zone width as tolerance
+      if(tolerance < 0.01) tolerance = 0.01;
+
+      if(!look_for_bullish)  // Bearish double top
+      {
+         // Find two highs that touch/enter the zone within tolerance
+         int first_touch_bar = -1;
+         double first_touch_high = 0;
+
+         for(int i = start_bar; i <= end_bar; i++)
+         {
+            // High is at or near the zone top
+            if(highs[i] >= zone_low && highs[i] <= zone_high + tolerance)
+            {
+               if(first_touch_bar < 0)
+               {
+                  first_touch_bar = i;
+                  first_touch_high = highs[i];
+               }
+               else if(i - first_touch_bar >= 3)  // At least 3 bars apart
+               {
+                  // Second touch found — check both rejected (closed below zone)
+                  if(closes[first_touch_bar] < zone_high &&
+                     closes[i] < zone_high &&
+                     MathAbs(highs[i] - first_touch_high) <= tolerance)
+                  {
+                     result.type        = REV_BEARISH_DOUBLE_TOP;
+                     result.quality     = 8.0;  // High quality pattern
+                     result.bar_index   = i;
+                     result.timestamp   = times[i];
+                     result.entry_price = closes[i];
+                     result.valid       = true;
+                     return true;
+                  }
+               }
+            }
+         }
+      }
+      else  // Bullish double bottom
+      {
+         int first_touch_bar = -1;
+         double first_touch_low = 0;
+
+         for(int i = start_bar; i <= end_bar; i++)
+         {
+            if(lows[i] <= zone_high && lows[i] >= zone_low - tolerance)
+            {
+               if(first_touch_bar < 0)
+               {
+                  first_touch_bar = i;
+                  first_touch_low = lows[i];
+               }
+               else if(i - first_touch_bar >= 3)
+               {
+                  if(closes[first_touch_bar] > zone_low &&
+                     closes[i] > zone_low &&
+                     MathAbs(lows[i] - first_touch_low) <= tolerance)
+                  {
+                     result.type        = REV_BULLISH_DOUBLE_BOTTOM;
+                     result.quality     = 8.0;
+                     result.bar_index   = i;
+                     result.timestamp   = times[i];
+                     result.entry_price = closes[i];
+                     result.valid       = true;
+                     return true;
+                  }
+               }
+            }
+         }
+      }
+      return false;
    }
 
    //--- Detect Market Structure Shift (MSS) on M5 timeframe
