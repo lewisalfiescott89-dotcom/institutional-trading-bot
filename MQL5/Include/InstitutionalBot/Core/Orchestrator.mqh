@@ -93,7 +93,8 @@ private:
    //--- Trade frequency controls
    int  m_max_trades_per_day;       // Max trades per day per symbol
    int  m_min_bars_between_trades;  // Minimum M5 bars between trades (cooldown)
-   int  m_last_trade_bar[MAX_SYMBOLS]; // Bar index of last trade per symbol
+   int  m_last_trade_bar[MAX_SYMBOLS]; // Per-symbol bar index of last trade
+   int  m_symbol_bar_count[MAX_SYMBOLS]; // Per-symbol M5 bar counter (for cooldown)
    bool m_require_htf_alignment;    // Require D1 trend alignment
    bool m_require_kill_zone;        // Only trade during kill zones
    ENUM_TREND_BIAS m_htf_bias[MAX_SYMBOLS]; // D1 trend bias per symbol
@@ -127,6 +128,7 @@ public:
       for(int i = 0; i < MAX_SYMBOLS; i++)
       {
          m_last_trade_bar[i] = -9999;
+         m_symbol_bar_count[i] = 0;
          m_htf_bias[i] = BIAS_NEUTRAL;
       }
       m_timeframes[0] = PERIOD_MN1;
@@ -245,6 +247,7 @@ private:
 
       int si = sym_idx;  // index into m_states[]
       m_total_bars_processed++;
+      m_symbol_bar_count[sym_idx]++;
 
       // Periodic diagnostic log every 200 bars (always on, regardless of log level)
       if(m_total_bars_processed % 200 == 0)
@@ -960,7 +963,7 @@ private:
          }
 
          // STEP 12e: Cooldown between trades
-         if((m_total_bars_processed - m_last_trade_bar[sym_idx]) < m_min_bars_between_trades)
+         if((m_symbol_bar_count[sym_idx] - m_last_trade_bar[sym_idx]) < m_min_bars_between_trades)
          {
             continue;  // Still in cooldown period
          }
@@ -1334,7 +1337,7 @@ private:
 
             m_risk_state.total_trades_today++;
             m_total_trades++;
-            m_last_trade_bar[sym_idx] = m_total_bars_processed;  // Cooldown tracking
+            m_last_trade_bar[sym_idx] = m_symbol_bar_count[sym_idx];  // Cooldown tracking (per-symbol)
 
             LogSignal(symbol, GradeToString(signal.grade),
                       signal.total_score,
