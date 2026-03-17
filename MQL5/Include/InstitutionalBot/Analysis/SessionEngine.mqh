@@ -9,6 +9,8 @@
 
 enum ENUM_SESSION { SESSION_ASIAN, SESSION_LONDON, SESSION_NEW_YORK, SESSION_OVERLAP, SESSION_OFF };
 
+enum ENUM_SESSION_BIAS { SESS_BIAS_NEUTRAL, SESS_BIAS_BULLISH, SESS_BIAS_BEARISH };
+
 struct SessionState
 {
    ENUM_SESSION  current_session;
@@ -20,6 +22,13 @@ struct SessionState
    double        london_low;
    double        ny_high;
    double        ny_low;
+   double        london_open_price;     // Price at London session open
+   double        ny_open_price;         // Price at NY session open
+   ENUM_SESSION_BIAS london_bias;       // London session directional bias
+   bool          asian_high_swept;      // Asian high was taken out (sell-side grab)
+   bool          asian_low_swept;       // Asian low was taken out (buy-side grab)
+   bool          london_open_set;       // Whether london_open_price has been recorded today
+   bool          ny_open_set;           // Whether ny_open_price has been recorded today
 
    void Init()
    {
@@ -29,6 +38,13 @@ struct SessionState
       asian_high  = -DBL_MAX; asian_low  = DBL_MAX;
       london_high = -DBL_MAX; london_low = DBL_MAX;
       ny_high     = -DBL_MAX; ny_low     = DBL_MAX;
+      london_open_price = 0;
+      ny_open_price     = 0;
+      london_bias       = SESS_BIAS_NEUTRAL;
+      asian_high_swept  = false;
+      asian_low_swept   = false;
+      london_open_set   = false;
+      ny_open_set       = false;
    }
 };
 
@@ -155,12 +171,88 @@ public:
       }
    }
 
+   //--- Record session open prices and detect Asian range sweeps
+   void UpdateSessionBias(double current_price, SessionState &state)
+   {
+      // Record London open price on first bar of London session
+      if((state.current_session == SESSION_LONDON || state.current_session == SESSION_OVERLAP)
+         && !state.london_open_set && current_price > 0)
+      {
+         state.london_open_price = current_price;
+         state.london_open_set   = true;
+      }
+
+      // Record NY open price on first bar of NY/overlap session
+      if((state.current_session == SESSION_NEW_YORK || state.current_session == SESSION_OVERLAP)
+         && !state.ny_open_set && current_price > 0)
+      {
+         state.ny_open_price = current_price;
+         state.ny_open_set   = true;
+      }
+
+      // Update London directional bias based on session range
+      if(state.london_open_set && state.london_open_price > 0)
+      {
+         double london_move = current_price - state.london_open_price;
+         // Need at least some movement to establish bias
+         if(london_move > 0 && state.london_high > state.london_open_price)
+            state.london_bias = SESS_BIAS_BULLISH;
+         else if(london_move < 0 && state.london_low < state.london_open_price)
+            state.london_bias = SESS_BIAS_BEARISH;
+      }
+
+      // Detect Asian range sweeps (institutional liquidity grabs)
+      if(state.asian_high > -DBL_MAX && !state.asian_high_swept)
+      {
+         if(current_price > state.asian_high)
+            state.asian_high_swept = true;  // Buy-side liquidity above Asian high was grabbed
+      }
+      if(state.asian_low < DBL_MAX && !state.asian_low_swept)
+      {
+         if(current_price < state.asian_low)
+            state.asian_low_swept = true;   // Sell-side liquidity below Asian low was grabbed
+      }
+   }
+
+   //--- Get session momentum direction for trade filtering
+   //    Returns: +1 for bullish session bias, -1 for bearish, 0 for neutral
+   int GetSessionMomentum(const SessionState &state)
+   {
+      if(state.london_bias == SESS_BIAS_BULLISH)  return +1;
+      if(state.london_bias == SESS_BIAS_BEARISH)  return -1;
+      return 0;
+   }
+
+   //--- Check if we're in a late session (profit-taking window)
+   bool IsLateSession(datetime current_time)
+   {
+      MqlDateTime dt;
+      TimeToStruct(current_time, dt);
+      int hour = dt.hour;
+      // Late London: after 14:00 UTC (last 2hrs before London close)
+      // Late NY: after 19:00 UTC (last 2hrs before NY close)
+      return (hour >= 14 && hour < 16) || (hour >= 19 && hour < 21);
+   }
+
+   //--- Check if we're in London/NY overlap (highest volume period)
+   bool IsOverlap(const SessionState &state)
+   {
+      return (state.current_session == SESSION_OVERLAP);
+   }
+
    //--- Reset session levels at start of each day
    void ResetDailyLevels(SessionState &state)
    {
       state.asian_high  = -DBL_MAX; state.asian_low  = DBL_MAX;
       state.london_high = -DBL_MAX; state.london_low = DBL_MAX;
       state.ny_high     = -DBL_MAX; state.ny_low     = DBL_MAX;
+      state.london_open_price = 0;
+      state.ny_open_price     = 0;
+      state.london_bias       = SESS_BIAS_NEUTRAL;
+      state.asian_high_swept  = false;
+      state.asian_low_swept   = false;
+      state.london_open_set   = false;
+      state.ny_open_set       = false;
    }
 };
 

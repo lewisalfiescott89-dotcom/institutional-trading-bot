@@ -543,6 +543,7 @@ private:
       // ================================================================
       m_session.Update(TimeCurrent(), m_states[si].session_state);
       m_session.TrackSessionLevels(m5_highs, m5_lows, m5_times, m5_count, m_states[si].session_state);
+      m_session.UpdateSessionBias(bid, m_states[si].session_state);
       m_states[si].session_name = m_states[si].session_state.session_name;
       m_states[si].in_kill_zone = m_states[si].session_state.in_kill_zone;
 
@@ -1032,6 +1033,68 @@ private:
             }
          }
 
+         // STEP 12c2: Session-aware directional bias
+         //   During London/NY overlap: favour trades aligned with London's move
+         //   After Asian range sweep: favour continuation in sweep direction
+         //   Late session: allow profit-taking reversals but log them
+         double session_score_bonus = 0;
+         bool poi_is_buy = (m_states[si].active_pois[p].direction == POI_BULLISH);
+         int session_momentum = m_session.GetSessionMomentum(m_states[si].session_state);
+
+         // London/NY overlap: highest conviction when both sessions agree
+         if(m_session.IsOverlap(m_states[si].session_state) && session_momentum != 0)
+         {
+            bool trade_aligns = (poi_is_buy && session_momentum > 0) ||
+                                (!poi_is_buy && session_momentum < 0);
+            if(trade_aligns)
+            {
+               session_score_bonus += 3.0;  // Strong boost for session-aligned trades
+               LogMessage(LOG_INFO, "SESSION_BIAS",
+                  StringFormat("%s POI#%d +3.0 score: trade aligns with London %s bias during overlap",
+                     symbol, m_states[si].active_pois[p].id,
+                     session_momentum > 0 ? "BULLISH" : "BEARISH"));
+            }
+            else
+            {
+               session_score_bonus -= 2.0;  // Penalty for fighting session momentum during overlap
+               LogMessage(LOG_INFO, "SESSION_BIAS",
+                  StringFormat("%s POI#%d -2.0 score: counter-session trade during LDN/NY overlap",
+                     symbol, m_states[si].active_pois[p].id));
+            }
+         }
+
+         // Asian range sweep: strong continuation signal
+         // If Asian high was swept (buy-side grabbed) → bearish (institutions sold into it)
+         // If Asian low was swept (sell-side grabbed) → bullish (institutions bought into it)
+         if(m_states[si].session_state.asian_high_swept && !poi_is_buy)
+         {
+            session_score_bonus += 2.0;  // Bearish after buy-side grab = institutional sell
+            LogMessage(LOG_INFO, "SESSION_BIAS",
+               StringFormat("%s POI#%d +2.0 score: SELL after Asian high sweep (buy-side grabbed)",
+                  symbol, m_states[si].active_pois[p].id));
+         }
+         if(m_states[si].session_state.asian_low_swept && poi_is_buy)
+         {
+            session_score_bonus += 2.0;  // Bullish after sell-side grab = institutional buy
+            LogMessage(LOG_INFO, "SESSION_BIAS",
+               StringFormat("%s POI#%d +2.0 score: BUY after Asian low sweep (sell-side grabbed)",
+                  symbol, m_states[si].active_pois[p].id));
+         }
+
+         // Late session profit-taking: institutions unwinding positions
+         if(m_session.IsLateSession(TimeCurrent()) && session_momentum != 0)
+         {
+            bool is_reversal_trade = (poi_is_buy && session_momentum < 0) ||
+                                     (!poi_is_buy && session_momentum > 0);
+            if(is_reversal_trade)
+            {
+               session_score_bonus += 1.5;  // Boost for profit-taking reversals in late session
+               LogMessage(LOG_INFO, "SESSION_BIAS",
+                  StringFormat("%s POI#%d +1.5 score: late session reversal (profit-taking)",
+                     symbol, m_states[si].active_pois[p].id));
+            }
+         }
+
          // STEP 12d: Kill zone filter
          if(m_require_kill_zone && !m_states[si].in_kill_zone)
          {
@@ -1147,6 +1210,9 @@ private:
                               m_states[si].active_pois[p].has_void_confluence,
                               m_states[si].active_pois[p].has_stop_run,
                               signal);
+
+         // Apply session-aware score bonus/penalty
+         signal.total_score += session_score_bonus;
 
          // Check timing allows trade
          m_timing.Evaluate(m_states[si].session_state, signal.total_score, 0, timing);
