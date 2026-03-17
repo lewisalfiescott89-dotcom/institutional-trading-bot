@@ -1232,8 +1232,8 @@ private:
          else
             sl_price = MathMin(poi_sl, default_sl);  // Lower = tighter for sells
 
-         // Safety: ensure SL is at least 10 pips from entry
-         double min_sl_dist = 10.0 * spec_sl.pip_size;
+         // Safety: ensure SL is at least 20 pips from entry (gold needs room)
+         double min_sl_dist = 20.0 * spec_sl.pip_size;
          if(MathAbs(entry_price - sl_price) < min_sl_dist)
             sl_price = default_sl;  // Fall back to default if POI SL too tight
 
