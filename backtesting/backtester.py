@@ -154,7 +154,7 @@ class Backtester:
 
             # Manage open trades first
             for trade in list(self.open_trades):
-                closed = self.trade_manager.check_sl_tp(trade, c, c)
+                closed = self.trade_manager.check_sl_tp(trade, l, h)
                 if closed:
                     self.open_trades.remove(trade)
                     self.trades.append(trade)
