@@ -264,6 +264,8 @@ private:
             symbol, m_total_bars_processed, m_total_zone_hits, m_total_reversals,
             m_total_passed, m_total_trades,
             m_states[si].active_poi_count, m_states[si].active_liq_count));
+         // Log adaptive TP performance every 200 bars
+         m_trade_mgr.LogAdaptiveTPReport();
       }
 
       // ================================================================

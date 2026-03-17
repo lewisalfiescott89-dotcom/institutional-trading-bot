@@ -288,7 +288,7 @@ struct RiskSettings
       max_daily_drawdown_pct  = 5.0;
       max_consecutive_losses  = 5;
       default_sl_pips         = 30.0;
-      partial_tp_pips         = 65.0;   // Take partial at 65 pips (60-70 range)
+      partial_tp_pips         = 0;      // 0 = adaptive mode (auto-optimize R-multiple)
       partial_close_pct       = 0.50;   // Close 50% of position
    }
 };

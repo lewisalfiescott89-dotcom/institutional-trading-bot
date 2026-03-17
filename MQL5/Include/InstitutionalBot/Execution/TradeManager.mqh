@@ -11,18 +11,21 @@
 #include "../Risk/CommissionEngine.mqh"
 #include "../Core/Logger.mqh"
 #include "../Config.mqh"
+#include "AdaptiveTPEngine.mqh"
 
 class CTradeManager
 {
 private:
-   CCommissionEngine m_commission;
-   CTrade            m_trade;
-   bool              m_dry_run;
-   double            m_partial_tp_pips;
-   double            m_partial_close_pct;
+   CCommissionEngine  m_commission;
+   CTrade             m_trade;
+   CAdaptiveTPEngine  m_adaptive_tp;
+   bool               m_dry_run;
+   double             m_partial_tp_pips;
+   double             m_partial_close_pct;
+   bool               m_adaptive_mode;
 
 public:
-   CTradeManager() : m_dry_run(true), m_partial_tp_pips(65.0), m_partial_close_pct(0.50)
+   CTradeManager() : m_dry_run(true), m_partial_tp_pips(0), m_partial_close_pct(0.50), m_adaptive_mode(true)
    {
       m_trade.SetDeviationInPoints(10);
       m_trade.SetTypeFilling(ORDER_FILLING_IOC);
@@ -33,7 +36,17 @@ public:
    {
       m_partial_tp_pips   = pips;
       m_partial_close_pct = close_pct;
+      // If pips <= 0, enable adaptive mode (auto-optimize R-multiple)
+      m_adaptive_mode = (pips <= 0);
+      if(m_adaptive_mode)
+         LogMessage(LOG_INFO, "ADAPTIVE_TP", "Adaptive partial TP enabled — starting at 1.5R, will self-optimize");
    }
+
+   //--- Access the adaptive TP engine for configuration
+   CAdaptiveTPEngine* GetAdaptiveTP() { return &m_adaptive_tp; }
+
+   //--- Log adaptive TP performance report
+   void LogAdaptiveTPReport() { if(m_adaptive_mode) m_adaptive_tp.LogPerformanceReport(); }
 
    //--- Update all open trades for a symbol
    void UpdateTrades(SymbolState &state, double current_bid, double current_ask)
@@ -164,6 +177,10 @@ public:
       trade.close_price = close_price;
       trade.close_time  = TimeCurrent();
 
+      // Feed closed trade to adaptive TP engine for performance tracking
+      if(m_adaptive_mode)
+         m_adaptive_tp.RecordTrade(trade);
+
       // Calculate gross PnL
       SymbolSpec spec = GetSymbolSpec(trade.symbol);
       double pip_diff = 0;
@@ -253,11 +270,14 @@ private:
       }
       else
       {
-         // Smart mode: use 1:1 R:R (partial at 1R = SL distance)
+         // Adaptive mode: use engine's optimized R-multiple
          double risk_dist = trade.OriginalRiskDistance();
          if(risk_dist <= 0) risk_dist = trade.RiskDistance();
          if(risk_dist <= 0) return;  // Can't calculate without SL
-         partial_dist = risk_dist;   // 1:1 R:R
+         if(m_adaptive_mode)
+            partial_dist = m_adaptive_tp.GetPartialTPDistance(risk_dist);
+         else
+            partial_dist = risk_dist;   // Fallback: 1:1 R:R
       }
 
       bool triggered = false;
@@ -355,10 +375,11 @@ private:
          }
 
          LogMessage(LOG_INFO, "PARTIAL",
-            StringFormat("%s %s #%d PARTIAL TP @ %.5f | Closed %.2f lots (%.0f%%) | Remaining %.2f lots → SL to BE",
+            StringFormat("%s %s #%d PARTIAL TP @ %.5f (%.1fR) | Closed %.2f lots (%.0f%%) | Remaining %.2f lots -> SL to BE",
                trade.symbol,
                (trade.direction == TRADE_BUY) ? "BUY" : "SELL",
                trade.id, current_price,
+               m_adaptive_mode ? m_adaptive_tp.GetPartialTPMultiplier() : (m_partial_tp_pips > 0 ? 0.0 : 1.0),
                close_lots, m_partial_close_pct * 100.0,
                remaining));
       }
