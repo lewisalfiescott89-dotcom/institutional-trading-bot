@@ -92,7 +92,7 @@ input double   InpPartialClosePct  = 50.0;      // Partial close % (50 = close 5
 input group "=== Trade Frequency Controls ==="
 input int      InpMaxTradesPerDay  = 5;         // Max trades per day (all symbols)
 input int      InpCooldownBars     = 6;         // Min M5 bars between trades (6=30min)
-input int      InpHTFMode          = 0;          // HTF trend mode: 0=off, 1=reduce lot 50%, 2=block counter-trend
+input bool     InpRequireHTF       = false;      // Require D1 trend alignment (false=allow counter-trend trades)
 input bool     InpRequireKZ        = false;      // Only trade during kill zones
 
 input group "=== Diagnostic / ICT Enhancements ==="
@@ -246,7 +246,7 @@ int OnInit()
    orchestrator.SetRequireLiqConf(InpRequireLiqConf);
    orchestrator.SetMaxTradesPerDay(InpMaxTradesPerDay);
    orchestrator.SetMinBarsBetweenTrades(InpCooldownBars);
-   orchestrator.SetHTFMode(InpHTFMode);
+   orchestrator.SetRequireHTFAlignment(InpRequireHTF);
    orchestrator.SetRequireKillZone(InpRequireKZ);
    orchestrator.SetUseMSS(InpUseMSS);
    if(InpFilterLowTFPOIs)
