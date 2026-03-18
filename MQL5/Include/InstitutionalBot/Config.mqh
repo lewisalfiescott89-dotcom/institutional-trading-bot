@@ -281,12 +281,12 @@ struct RiskSettings
 
    void Init()
    {
-      a_plus_risk_pct         = 2.00;
-      a_risk_pct              = 1.00;
-      b_risk_pct              = 0.50;
-      c_risk_pct              = 0.25;
-      max_daily_drawdown_pct  = 5.0;
-      max_consecutive_losses  = 3;
+      a_plus_risk_pct         = 1.00;   // Halved from 2.0% to reduce drawdown
+      a_risk_pct              = 0.50;   // Halved from 1.0%
+      b_risk_pct              = 0.25;   // Halved from 0.5%
+      c_risk_pct              = 0.15;   // Reduced from 0.25%
+      max_daily_drawdown_pct  = 4.0;    // Tighter daily limit (was 5%)
+      max_consecutive_losses  = 2;      // Pause after 2 losses (was 3) — trades in flight may add 1 more
       default_sl_pips         = 500.0;  // 500 pips × 0.1 = $50 SL for gold
       partial_tp_pips         = 0;      // 0 = adaptive mode (auto-optimize R-multiple)
       partial_close_pct       = 0.50;   // Close 50% of position
@@ -328,8 +328,8 @@ struct SafetySettings
    {
       max_spread_pips          = 5.0;
       max_volatility_atr_pips  = 500.0;
-      max_daily_drawdown_pct   = 5.0;
-      max_consecutive_losses   = 3;
+      max_daily_drawdown_pct   = 4.0;    // Tighter daily limit (was 5%)
+      max_consecutive_losses   = 2;      // Pause after 2 losses (trades in flight may add 1 more)
       emergency_pause          = false;
       abnormal_vol_filter      = true;
    }
