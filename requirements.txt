@@ -1,0 +1,15 @@
+# Core dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+
+# MetaTrader 5 (Windows only – install on your trading machine)
+# pip install MetaTrader5
+# Uncomment below if running on Windows with MT5:
+# MetaTrader5>=5.0.45
+
+# Visualization
+plotly>=5.15.0
+
+# Optional: for Jupyter notebook integration
+# jupyter>=1.0.0
+# nbformat>=5.0.0
